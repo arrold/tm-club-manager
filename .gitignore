@@ -1,0 +1,18 @@
+# Openplanet Plugin - .gitignore
+
+# Trackmania & Openplanet specifics
+Openplanet.log
+/tmp/
+
+# Project specifics
+/specs/
+/.agents/
+/.vscode/
+
+# Windows specifics
+Thumbs.db
+desktop.ini
+
+# Common artifacts
+*.tmp
+*.log

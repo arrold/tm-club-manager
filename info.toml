@@ -1,0 +1,9 @@
+[meta]
+name = "Club Manager"
+author = "Arrold"
+category = "Club Management"
+version = "0.0.1"
+
+[script]
+main = "src/Main.as"
+dependencies = ["NadeoServices"]
