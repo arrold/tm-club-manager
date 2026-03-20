@@ -114,7 +114,16 @@ namespace API {
         string endpoint = "/folder/create";
         if (type == "campaign") endpoint = "/campaign/create";
         else if (type == "news") endpoint = "/news/create";
-        else if (type == "room") endpoint = "/room/create";
+        else if (type == "room") {
+            endpoint = "/room/create";
+            data["region"] = "eu-west";
+            data["maxPlayersPerServer"] = 32;
+            data["script"] = "TrackMania/TM_TimeAttack_Online.Script.txt";
+            data["maps"] = Json::Array();
+            data["settings"] = Json::Array();
+            data["password"] = 0;
+            data["scalable"] = 1;
+        }
 
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + endpoint, data);
     }
@@ -124,6 +133,8 @@ namespace API {
     }
 
     Json::Value@ SetCampaignMaps(uint clubId, uint campaignId, const string &in campaignName, string[]@ mapUids) {
+        auto current = GetCampaignMaps(clubId, campaignId);
+        
         Json::Value@ playlist = Json::Array();
         for (uint i = 0; i < mapUids.Length; i++) {
             Json::Value@ entry = Json::Object();
@@ -131,35 +142,103 @@ namespace API {
             entry["mapUid"] = mapUids[i];
             playlist.Add(entry);
         }
+
+        Json::Value@ cats = null;
+        if (current !is null) {
+            if (current.HasKey("categories") && current["categories"].GetType() == Json::Type::Array) {
+                @cats = current["categories"];
+            } else if (current.HasKey("campaign") && current["campaign"].HasKey("categories") && current["campaign"]["categories"].GetType() == Json::Type::Array) {
+                @cats = current["campaign"]["categories"];
+            }
+        }
+
         Json::Value@ data = Json::Object();
         data["name"] = campaignName;
         data["playlist"] = playlist;
+        data["published"] = true;
+
+        if (cats !is null && cats.Length > 0) {
+            Json::Value@ newCats = Json::Array();
+            for (uint i = 0; i < cats.Length; i++) {
+                Json::Value@ c = Json::Object();
+                c["name"] = cats[i]["name"];
+                c["position"] = cats[i]["position"];
+                c["length"] = (cats.Length == 1) ? int(mapUids.Length) : int(cats[i]["length"]);
+                newCats.Add(c);
+            }
+            data["categories"] = newCats;
+            trace("  Categories being sent (flat): " + Json::Write(newCats));
+        }
+
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
+    }
+
+    Json::Value@ SetActivityDetails(uint clubId, uint activityId, const string &in name, bool isPublic, uint itemsCount) {
+        Json::Value@ data = Json::Object();
+        data["name"] = name;
+        data["public"] = isPublic;
+        data["itemsCount"] = int(itemsCount);
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
     Json::Value@ GetClubRoom(uint clubId, uint roomId) {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/room/" + roomId);
     }
 
-    Json::Value@ SetRoomDetails(uint clubId, uint roomId, Json::Value@ data) {
-        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/room/" + roomId + "/edit", data);
+    Json::Value@ SetRoomDetails(uint clubId, uint activityId, Json::Value@ settings) {
+        auto roomJson = GetClubRoom(clubId, activityId);
+        if (roomJson is null) return null;
+        Json::Value@ data = PrepareRoomPayload(roomJson);
+        
+        // Merge settings from data object (which has keys: name, script, maxPlayers, password)
+        if (settings.HasKey("name")) data["name"] = settings["name"];
+        if (settings.HasKey("script")) data["script"] = settings["script"];
+        if (settings.HasKey("maxPlayers")) data["maxPlayersPerServer"] = settings["maxPlayers"];
+        if (settings.HasKey("password")) data["password"] = settings["password"];
+        if (settings.HasKey("campaignId")) data["campaignId"] = settings["campaignId"];
+        
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/room/" + activityId + "/edit", data);
     }
 
-    Json::Value@ SetRoomMaps(uint clubId, uint roomId, string[]@ mapUids) {
-        auto roomJson = GetClubRoom(clubId, roomId);
+    Json::Value@ SetRoomMaps(uint clubId, uint activityId, string[]@ mapUids) {
+        auto roomJson = GetClubRoom(clubId, activityId);
         if (roomJson is null) return null;
-        Json::Value@ room = roomJson.HasKey("room") ? roomJson["room"] : roomJson;
-        Json::Value@ data = Json::Object();
-        data["name"] = room.HasKey("name") ? room["name"] : "";
-        data["script"] = room.HasKey("script") ? room["script"] : "TrackMania/TM_TimeAttack_Online.Script.txt";
-        data["scalable"] = room.HasKey("scalable") ? bool(room["scalable"]) : true;
-        data["maxPlayers"] = room.HasKey("maxPlayers") ? int(room["maxPlayers"]) : 32;
-        data["region"] = room.HasKey("region") ? room["region"] : "eu-west";
+        Json::Value@ data = PrepareRoomPayload(roomJson);
+        
         Json::Value@ mapsArr = Json::Array();
         for (uint i = 0; i < mapUids.Length; i++) mapsArr.Add(mapUids[i]);
         data["maps"] = mapsArr;
-        if (room.HasKey("scriptSettings")) data["scriptSettings"] = room["scriptSettings"];
-        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/room/" + roomId + "/edit", data);
+
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/room/" + activityId + "/edit", data);
+    }
+
+    // Helper to prepare a full room payload from a GET response, using the correct POST format
+    Json::Value@ PrepareRoomPayload(Json::Value@ roomJson) {
+        Json::Value@ room = roomJson.HasKey("room") ? roomJson["room"] : roomJson;
+        Json::Value@ data = Json::Object();
+        data["name"] = room.HasKey("name") ? string(room["name"]) : "";
+        data["script"] = room.HasKey("script") ? string(room["script"]) : "TrackMania/TM_TimeAttack_Online.Script.txt";
+        data["scalable"] = room.HasKey("scalable") ? (bool(room["scalable"]) ? 1 : 0) : 1;
+        data["maxPlayersPerServer"] = room.HasKey("maxPlayers") ? int(room["maxPlayers"]) : 32;
+        data["region"] = room.HasKey("region") ? string(room["region"]) : "eu-west";
+        data["password"] = room.HasKey("password") ? (bool(room["password"]) ? 1 : 0) : 0;
+        
+        if (room.HasKey("maps") && room["maps"].GetType() == Json::Type::Array) {
+            data["maps"] = room["maps"];
+        } else {
+            data["maps"] = Json::Array();
+        }
+        
+        Json::Value@ settingsArr = Json::Array();
+        if (room.HasKey("scriptSettings") && room["scriptSettings"].GetType() == Json::Type::Object) {
+            auto s = room["scriptSettings"];
+            auto keys = s.GetKeys();
+            for (uint i = 0; i < keys.Length; i++) {
+                settingsArr.Add(s[keys[i]]);
+            }
+        }
+        data["settings"] = settingsArr;
+        return data;
     }
 
     Json::Value@ SetNewsDetails(uint clubId, uint activityId, const string &in name, const string &in headline, const string &in body) {
@@ -179,6 +258,10 @@ namespace API {
     Json::Value@ RenameActivity(uint clubId, uint activityId, const string &in newName) {
         Json::Value@ data = Json::Object();
         data["name"] = newName;
+        return EditClubActivity(clubId, activityId, data);
+    }
+
+    Json::Value@ EditClubActivity(uint clubId, uint activityId, Json::Value@ data) {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
@@ -300,7 +383,7 @@ namespace API {
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CAuthorBeaten";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
 
     Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
@@ -352,5 +435,23 @@ namespace API {
             trace("TMX Search response, result count: " + (json.HasKey("Results") ? tostring(json["Results"].Length) : "unknown"));
         }
         return json;
+    }
+
+    Json::Value@ SearchMapsForAudit(TmxSearchFilters@ f, uint limit = 25) {
+        TmxSearchFilters@ clone = TmxSearchFilters(f.ToJson());
+        
+        bool canJump = f.PageStartingIds.Length >= f.CurrentPage;
+        if (canJump) {
+            trace("SearchMapsForAudit: Jumping to Page=" + f.CurrentPage + " using TrackId=" + f.PageStartingIds[f.CurrentPage - 1]);
+            return SearchMaps(clone, limit); 
+        } else {
+            uint totalLimit = limit * uint(Math::Max(1, f.CurrentPage));
+            if (f.PrimaryTagOnly) totalLimit = 100;
+            if (totalLimit > 100) totalLimit = 100; 
+            trace("SearchMapsForAudit: Fetching from start. Page=" + f.CurrentPage + " limit=" + limit + " totalLimit=" + totalLimit);
+            clone.CurrentPage = 1;
+            clone.PageStartingIds = { 0 };
+            return SearchMaps(clone, totalLimit);
+        }
     }
 }

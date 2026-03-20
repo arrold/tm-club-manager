@@ -103,6 +103,11 @@ namespace UI {
     bool createAsActive = true;
     bool showCreateFolderModal = false;
     bool showCreateCampaignModal = false;
+    bool showCreateRoomModal = false;
+    
+    string nextRoomPassword = "";
+    int nextRoomMaxPlayers = 32;
+    string nextRoomScript = "TrackMania/TM_TimeAttack_Online.Script.txt";
 
 
     void RenderActivityTab() {
@@ -119,6 +124,14 @@ namespace UI {
             nextActivityName = "New Campaign";
             showCreateCampaignModal = true;
         }
+        UI::SameLine();
+        if (UI::Button("Create Room")) {
+            nextActivityName = "New Room";
+            nextRoomPassword = "";
+            nextRoomMaxPlayers = 32;
+            nextRoomScript = "TrackMania/TM_TimeAttack_Online.Script.txt";
+            showCreateRoomModal = true;
+        }
 
         if (showCreateFolderModal) {
             UI::OpenPopup("Create Folder");
@@ -126,6 +139,8 @@ namespace UI {
         }
         if (UI::BeginPopupModal("Create Folder", UI::WindowFlags::AlwaysAutoResize)) {
             nextActivityName = UI::InputText("Folder Name", nextActivityName);
+            if (nextActivityName.Length > 20) nextActivityName = nextActivityName.SubStr(0, 20);
+            if (nextActivityName.Length >= 20) UI::Text("\\$f00Maximum name length reached (20 chars)");
             createAsActive = UI::Checkbox("Create as Active", createAsActive);
             if (UI::Button("Create")) {
                 startnew(DoCreateFolder);
@@ -142,9 +157,30 @@ namespace UI {
         }
         if (UI::BeginPopupModal("Create Campaign", UI::WindowFlags::AlwaysAutoResize)) {
             nextActivityName = UI::InputText("Campaign Name", nextActivityName);
+            if (nextActivityName.Length > 20) nextActivityName = nextActivityName.SubStr(0, 20);
+            if (nextActivityName.Length >= 20) UI::Text("\\$f00Maximum name length reached (20 chars)");
             createAsActive = UI::Checkbox("Create as Active", createAsActive);
             if (UI::Button("Create")) {
                 startnew(DoCreateCampaign);
+                UI::CloseCurrentPopup();
+            }
+            UI::SameLine();
+            if (UI::Button("Cancel")) UI::CloseCurrentPopup();
+            UI::EndPopup();
+        }
+
+        if (showCreateRoomModal) {
+            UI::OpenPopup("Create Room");
+            showCreateRoomModal = false;
+        }
+        if (UI::BeginPopupModal("Create Room", UI::WindowFlags::AlwaysAutoResize)) {
+            nextActivityName = UI::InputText("Room Name", nextActivityName);
+            if (nextActivityName.Length > 20) nextActivityName = nextActivityName.SubStr(0, 20);
+            if (nextActivityName.Length >= 20) UI::Text("\\$f00Maximum name length reached (20 chars)");
+            createAsActive = UI::Checkbox("Create as Active", createAsActive);
+            
+            if (UI::Button("Create")) {
+                startnew(DoCreateRoom);
                 UI::CloseCurrentPopup();
             }
             UI::SameLine();
@@ -218,6 +254,11 @@ namespace UI {
         if (a.IsRenaming) {
             UI::SetNextItemWidth(200);
             a.RenameBuffer = UI::InputText("##rename", a.RenameBuffer);
+            if (a.RenameBuffer.Length > 20) a.RenameBuffer = a.RenameBuffer.SubStr(0, 20);
+            if (a.RenameBuffer.Length >= 20) {
+                UI::SameLine();
+                UI::Text("\\$f00(Max)");
+            }
             UI::SameLine();
             if (UI::Button(Icons::Check + "##confirm")) {
                 if (a.RenameBuffer.Length > 0) {
@@ -233,6 +274,9 @@ namespace UI {
             }
         } else {
             string label = icon + " " + a.Name;
+            if (a.Type == "campaign" || a.Type == "room") {
+                label += " (" + a.Maps.Length + " maps)";
+            }
             if (a.Type == "room" && a.MapsLoaded) {
                 label += " (" + a.ServerStatus + ": " + a.ParticipantCount + " players)";
             }
@@ -460,32 +504,18 @@ namespace UI {
                     UI::TextDisabled("(Saving will update the campaign on Nadeo services)");
                 }
             } else if (a.Type == "room") {
-                if (!a.IsManagingMaps) {
+                if (a.CampaignId > 0) {
+                    string campName = (a.MirroringCampaignName != "" ? a.MirroringCampaignName : "Campaign ID " + a.CampaignId);
+                    UI::Text("\\$f80" + Icons::Link + "\\$z Mirroring Campaign: \\$fff" + campName);
+                } else if (!a.IsManagingMaps) {
                     if (UI::Button(Icons::List + " Manage Map Order")) {
                         a.IsManagingMaps = true;
                         a.PendingMaps.RemoveRange(0, a.PendingMaps.Length);
                         for (uint i = 0; i < a.Maps.Length; i++) a.PendingMaps.InsertLast(a.Maps[i]);
                     }
-                    UI::SameLine();
-                    if (UI::Button(Icons::Cog + " Server Settings")) {
-                        a.IsManagingSettings = !a.IsManagingSettings;
-                    }
                     UI::Separator();
                     
-                    if (a.IsManagingSettings) {
-                        a.Script = UI::InputText("Script", a.Script);
-                        a.MaxPlayers = UI::InputInt("Max Players", a.MaxPlayers);
-                        a.Password = UI::InputText("Password", a.Password, UI::InputTextFlags::Password);
-                        
-                        if (UI::Button(Icons::FloppyO + " Save Settings")) {
-                            startnew(DoSaveRoomSettings, a);
-                        }
-                        UI::SameLine();
-                        if (UI::Button(Icons::Times + " Cancel")) {
-                            a.IsManagingSettings = false;
-                        }
-                        UI::Separator();
-                    }
+
 
                     for (uint i = 0; i < a.Maps.Length; i++) {
                         UI::Text(" " + (i + 1) + ". " + a.Maps[i].Name + " by " + a.Maps[i].Author);
@@ -539,16 +569,21 @@ namespace UI {
                         }
                         UI::EndTable();
                     }
-                    if (UI::Button(Icons::FloppyO + " Save New Map Order")) {
-                        startnew(DoSaveRoomMapOrder, a);
+                        if (UI::Button(Icons::FloppyO + " Save New Map Order")) {
+                            startnew(DoSaveRoomMapOrder, a);
+                        }
+                        UI::SameLine();
+                        if (UI::Button(Icons::Refresh + " Sync with Live Server")) {
+                            startnew(DoSyncRoomInstance, a);
+                        }
+
+                        UI::SameLine();
+                        if (UI::Button(Icons::Times + " Cancel")) {
+                            a.IsManagingMaps = false;
+                        }
+                        UI::TextDisabled("(Saving will update the room on Nadeo services)");
                     }
-                    UI::SameLine();
-                    if (UI::Button(Icons::Times + " Cancel")) {
-                        a.IsManagingMaps = false;
-                    }
-                    UI::TextDisabled("(Saving will update the room on Nadeo services)");
-                }
-            } else if (a.Type == "news") {
+                } else if (a.Type == "news") {
                 UI::TextDisabled("News Content:");
                 a.Headline = UI::InputText("Headline", a.Headline);
                 a.Body = UI::InputTextMultiline("Body", a.Body, vec2(0, 150));
@@ -561,6 +596,127 @@ namespace UI {
                     UI::Text(" • " + m.Name + " by " + m.Author);
                 }
             }
+            RenderAuditSubscription(a);
+        }
+    }
+
+    void RenderAuditSubscription(Activity@ a) {
+        auto sub = Subscriptions::GetByActivity(a.Id);
+        if (sub is null) return;
+
+        UI::Separator();
+        UI::Text("\\$f80" + Icons::MapMarker + "\\$z Subscription Curation Audit");
+        UI::TextDisabled("This activity is pinned to a TMX search (" + sub.MapLimit + " maps).");
+        
+        if (a.IsAuditing) {
+            UI::Text("\\$888" + Icons::HourglassHalf + " Auditing... comparing TMX with current maps...");
+        } else {
+            if (UI::Button(Icons::Search + " Audit Now")) {
+                startnew(DoAuditSubscription, a);
+            }
+            if (sub.LastRun > 0) {
+                UI::SameLine();
+                UI::TextDisabled("Last audit: " + (sub.LastRun == 0 ? "Never" : "Recently"));
+            }
+        }
+
+        if (a.AuditDone) {
+            UI::Indent();
+            if (a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0 && !a.AuditOrderMismatch) {
+                UI::Text("\\$0f0" + Icons::Check + " Activity is up to date and correctly ordered.");
+            } else {
+                if (a.AuditOrderMismatch && a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0) {
+                    UI::Text("\\$f00" + Icons::ExclamationTriangle + " Maps are out of order compared to TMX results.");
+                    UI::TextDisabled("Apply changes to restore the correct TMX sequence.");
+                } else if (a.AuditOrderMismatch) {
+                    UI::Text("\\$f80" + Icons::ExclamationTriangle + " Content changes AND order mismatch detected.");
+                }
+
+                UI::Columns(2, "AuditCols", false);
+                UI::Text("\\$0f0" + Icons::PlusCircle + " Maps to Add (" + a.AuditAdded.Length + ")");
+                for (uint i = 0; i < a.AuditAdded.Length; i++) {
+                    UI::TextDisabled(" • " + a.AuditAdded[i].Name);
+                    if (UI::IsItemHovered()) UI::SetTooltip(a.AuditAdded[i].Author);
+                }
+                UI::NextColumn();
+                UI::Text("\\$f00" + Icons::MinusCircle + " Maps to Remove (" + a.AuditRemoved.Length + ")");
+                for (uint i = 0; i < a.AuditRemoved.Length; i++) {
+                    UI::TextDisabled(" • " + a.AuditRemoved[i].Name);
+                    if (UI::IsItemHovered()) UI::SetTooltip(a.AuditRemoved[i].Author);
+                }
+                UI::Columns(1);
+                
+                if (UI::Button(Icons::Play + " Apply Audit Changes")) {
+                    startnew(DoApplyAudit, a);
+                }
+                if (UI::IsItemHovered()) {
+                    string msg = "This will add the missing maps and remove the ones that dropped out";
+                    if (a.AuditOrderMismatch) msg += ", and restore the correct TMX order";
+                    UI::SetTooltip(msg + ".");
+                }
+            }
+            UI::Unindent();
+        }
+    }
+
+    void DoSyncRoomInstance(ref@ data) {
+        Activity@ a = cast<Activity>(data);
+        if (a is null || SelectedClub is null) return;
+        
+        Notify("Restarting room instance to sync template...");
+        
+        // Deactivate
+        Json::Value@ offSettings = Json::Object();
+        offSettings["active"] = false;
+        API::EditClubActivity(SelectedClub.Id, a.Id, offSettings);
+        
+        yield(500); // Give Nadeo masterserver bit of time to kill the instance
+        
+        // Reactivate
+        Json::Value@ onSettings = Json::Object();
+        onSettings["active"] = true;
+        API::EditClubActivity(SelectedClub.Id, a.Id, onSettings);
+        
+        Notify("Room instance restarted. Sync complete!");
+        startnew(RefreshActivities); 
+    }
+
+    void DoSeverCampaignLink(ref@ data) {
+        Activity@ a = cast<Activity>(data);
+        if (a is null || SelectedClub is null) return;
+        
+        Notify("Severing campaign link...");
+        
+        Json::Value@ settings = Json::Object();
+        settings["campaignId"] = Json::Value(); // Try null to clear
+        auto res = API::EditClubActivity(SelectedClub.Id, a.Id, settings);
+        
+        if (res !is null) {
+            a.CampaignId = 0;
+            Notify("Room is now independent. Re-loading effective map list...");
+            startnew(LoadActivityMaps, a);
+        } else {
+            Notify("Failed to sever campaign link.");
+        }
+    }
+
+    void DoSaveRoomMapOrder(ref@ data) {
+        Activity@ a = cast<Activity>(data);
+        if (a is null || SelectedClub is null) return;
+
+        string[] uids;
+        for (uint i = 0; i < a.PendingMaps.Length; i++) {
+            uids.InsertLast(a.PendingMaps[i].Uid);
+        }
+
+        auto res = API::SetRoomMaps(SelectedClub.Id, a.Id, uids);
+        if (res !is null) {
+            Notify("Room map order saved successfully!");
+            NotifyInfo("Note: Use 'Sync with Live Server' to apply changes immediately.");
+            a.IsManagingMaps = false;
+            startnew(LoadActivityMaps, a);
+        } else {
+            Notify("Failed to save room map order. (Check if any maps are too large > 7MB)");
         }
     }
 
@@ -779,28 +935,30 @@ namespace UI {
         tmxFilters.AuthorName = UI::InputText("Author Name", tmxFilters.AuthorName);
         UI::PopItemWidth();
         UI::Columns(2, "VehDiffCols", false);
-        if (UI::BeginCombo("Vehicle", tmxFilters.Vehicle == -1 ? "Any Vehicle" : TMX::VEHICLE_NAMES[tmxFilters.Vehicle])) {
-            if (UI::Selectable("Any Vehicle", tmxFilters.Vehicle == -1)) tmxFilters.Vehicle = -1;
+        UI::PushItemWidth(120);
+        if (UI::BeginCombo("Vehicle", tmxFilters.Vehicle == -1 ? "Any" : TMX::VEHICLE_NAMES[tmxFilters.Vehicle])) {
+            if (UI::Selectable("Any", tmxFilters.Vehicle == -1)) tmxFilters.Vehicle = -1;
             for (uint i = 0; i < TMX::VEHICLE_NAMES.Length; i++) {
                 if (UI::Selectable(TMX::VEHICLE_NAMES[i], tmxFilters.Vehicle == int(i))) tmxFilters.Vehicle = i;
             }
             UI::EndCombo();
         }
         UI::NextColumn();
-        if (UI::BeginCombo("Difficulty", tmxFilters.Difficulty == -1 ? "Any Difficulty" : TMX::DIFFICULTY_NAMES[tmxFilters.Difficulty])) {
-            if (UI::Selectable("Any Difficulty", tmxFilters.Difficulty == -1)) tmxFilters.Difficulty = -1;
+        if (UI::BeginCombo("Difficulty", tmxFilters.Difficulty == -1 ? "Any" : TMX::DIFFICULTY_NAMES[tmxFilters.Difficulty])) {
+            if (UI::Selectable("Any", tmxFilters.Difficulty == -1)) tmxFilters.Difficulty = -1;
             for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
                 if (UI::Selectable(TMX::DIFFICULTY_NAMES[i], tmxFilters.Difficulty == int(i))) tmxFilters.Difficulty = i;
             }
             UI::EndCombo();
         }
+        UI::PopItemWidth();
         UI::Columns(1);
 
         // Tags section as a collapsible header
         if (UI::CollapsingHeader("Tags")) {
             UI::Indent();
             UI::TextDisabled("Include (map must have tag):");
-            UI::Columns(3, "TagIncCols", false);
+            UI::Columns(5, "TagIncCols", false);
             for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
                 string tag = TMX::TAG_NAMES[i];
                 bool checked = ArrayContains(tmxFilters.IncludeTags, tag);
@@ -815,7 +973,7 @@ namespace UI {
 
             UI::Separator();
             UI::TextDisabled("Exclude (map must NOT have tag):");
-            UI::Columns(3, "TagExcCols", false);
+            UI::Columns(5, "TagExcCols", false);
             for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
                 string tag = TMX::TAG_NAMES[i];
                 bool checked = ArrayContains(tmxFilters.ExcludeTags, tag);
@@ -845,21 +1003,26 @@ namespace UI {
         tmxFilters.TimeToMs = (tmxFilters.hTo * 3600 + tmxFilters.mTo * 60 + tmxFilters.sTo) * 1000;
 
         UI::Columns(2, "DateCols", false);
-        tmxFilters.UploadedFrom = UI::InputText("Uploaded From (DD/MM/YYYY)", tmxFilters.UploadedFrom);
+        UI::PushItemWidth(100);
+        tmxFilters.UploadedFrom = UI::InputText("Uploaded From", tmxFilters.UploadedFrom);
+        if (UI::IsItemHovered()) UI::SetTooltip("DD/MM/YYYY");
         UI::NextColumn();
-        tmxFilters.UploadedTo = UI::InputText("Uploaded To (DD/MM/YYYY)", tmxFilters.UploadedTo);
+        tmxFilters.UploadedTo = UI::InputText("Uploaded To", tmxFilters.UploadedTo);
+        if (UI::IsItemHovered()) UI::SetTooltip("DD/MM/YYYY");
+        UI::PopItemWidth();
         UI::Columns(1);
 
-        // Collection filters
-        string totdLabel = tmxFilters.InTOTD == -1 ? "Any" : (tmxFilters.InTOTD == 1 ? "Was TOTD" : "Not TOTD");
-        if (UI::BeginCombo("Track of the Day", totdLabel)) {
+        // Collection & Sort filters on one row
+        UI::Columns(3, "SortCols", false);
+        string totdLabel = tmxFilters.InTOTD == -1 ? "Any TOTD" : (tmxFilters.InTOTD == 1 ? "Was TOTD" : "Not TOTD");
+        UI::PushItemWidth(120);
+        if (UI::BeginCombo("TOTD", totdLabel)) {
             if (UI::Selectable("Any", tmxFilters.InTOTD == -1)) tmxFilters.InTOTD = -1;
             if (UI::Selectable("Was TOTD", tmxFilters.InTOTD == 1)) tmxFilters.InTOTD = 1;
             if (UI::Selectable("Not TOTD", tmxFilters.InTOTD == 0)) tmxFilters.InTOTD = 0;
             UI::EndCombo();
         }
-
-        UI::Columns(2, "SortCols", false);
+        UI::NextColumn();
         if (UI::BeginCombo("Primary Sort", tmxFilters.SortPrimary == -1 ? "Relevance" : TMX::SORT_OPTIONS[tmxFilters.SortPrimary])) {
             if (UI::Selectable("Relevance", tmxFilters.SortPrimary == -1)) tmxFilters.SortPrimary = -1;
             for (uint i = 0; i < TMX::SORT_OPTIONS.Length; i++) {
@@ -875,11 +1038,21 @@ namespace UI {
             }
             UI::EndCombo();
         }
+        UI::PopItemWidth();
         UI::Columns(1);
+
         UI::Separator();
-        tmxFilters.PrimaryTagOnly = UI::Checkbox("Primary Tag Only (first tag must match)", tmxFilters.PrimaryTagOnly);
+        tmxFilters.PrimaryTagOnly = UI::Checkbox("Primary Tag Only", tmxFilters.PrimaryTagOnly);
+        UI::SameLine();
+        tmxFilters.HideOversized = UI::Checkbox("Hide Over-sized Maps", tmxFilters.HideOversized);
         UI::EndChild();
 
+        UI::SetNextItemWidth(100);
+        tmxFilters.ResultLimit = uint(UI::InputInt("Limit", int(tmxFilters.ResultLimit)));
+        if (tmxFilters.ResultLimit < 1) tmxFilters.ResultLimit = 1;
+        if (tmxFilters.ResultLimit > 100) tmxFilters.ResultLimit = 100;
+        
+        UI::SameLine();
         if (UI::Button("Find Maps on TMX") && !searchInProgress) {
             tmxFilters.CurrentPage = 1;
             tmxFilters.PageStartingIds.RemoveRange(0, tmxFilters.PageStartingIds.Length);
@@ -928,6 +1101,38 @@ namespace UI {
                 startnew(DoBatchAdd);
             }
             UI::EndDisabled();
+
+            UI::SameLine();
+            UI::BeginDisabled(batchTargetActivity is null);
+            auto existingSub = Subscriptions::GetByActivity(batchTargetActivity is null ? 0 : batchTargetActivity.Id);
+            if (existingSub is null) {
+                if (UI::Button(Icons::MapMarker + " Pin Search")) {
+                    Subscription sub;
+                    sub.ActivityId = batchTargetActivity.Id;
+                    sub.ActivityName = batchTargetActivity.Name;
+                    trace("Pinning search. Current Page in UI: " + tmxFilters.CurrentPage);
+                    @sub.Filters = TmxSearchFilters(tmxFilters.ToJson()); // Clone
+                    Subscriptions::Add(sub);
+                    Notify("Search pinned to " + batchTargetActivity.Name);
+                }
+                if (UI::IsItemHovered()) UI::SetTooltip("Save these filters as a 'Subscription' for this activity.\nYou can then 'Audit' the activity to see which maps should be added/removed.");
+            } else {
+                if (UI::Button(Icons::MapMarker + " Update Pin")) {
+                    @existingSub.Filters = TmxSearchFilters(tmxFilters.ToJson()); // Clone
+                    existingSub.ActivityName = batchTargetActivity.Name;
+                    Subscriptions::Save();
+                    Notify("Subscription updated for " + batchTargetActivity.Name);
+                }
+                UI::SameLine();
+                UI::PushStyleColor(UI::Col::Button, vec4(0.6, 0.2, 0.2, 0.6));
+                if (UI::Button(Icons::Times + "##unpin")) {
+                    Subscriptions::Remove(batchTargetActivity.Id);
+                    Notify("Subscription removed.");
+                }
+                UI::PopStyleColor();
+                if (UI::IsItemHovered()) UI::SetTooltip("Remove subscription");
+            }
+            UI::EndDisabled();
             UI::EndGroup();
             UI::Separator();
             UI::Separator();
@@ -943,7 +1148,7 @@ namespace UI {
             UI::Separator();
 
             UI::SetNextItemWidth(UI::GetContentRegionAvail().x * 0.95f);
-            if (UI::BeginTable("TMX Results", 10, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
+            if (UI::BeginTable("TMX Results", 11, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
                 UI::TableSetupColumn("Sel", UI::TableColumnFlags::WidthFixed, 30);
                 UI::TableSetupColumn("Thumb", UI::TableColumnFlags::WidthFixed, 40);
                 UI::TableSetupColumn("Map Name");
@@ -952,6 +1157,7 @@ namespace UI {
                 UI::TableSetupColumn("Difficulty");
                 UI::TableSetupColumn("Awards");
                 UI::TableSetupColumn("Tags");
+                UI::TableSetupColumn("Size", UI::TableColumnFlags::WidthFixed, 50);
                 UI::TableSetupColumn("AT Beaten", UI::TableColumnFlags::WidthFixed, 60);
                 UI::TableSetupColumn("TMX ID", UI::TableColumnFlags::WidthFixed, 60);
                 UI::TableHeadersRow();
@@ -978,6 +1184,32 @@ namespace UI {
                         tagsStr += (j > 0 ? ", " : "") + m.Tags[j];
                     }
                     UI::Text(tagsStr);
+                    
+                    UI::TableNextColumn();
+                    bool hardLimit = m.ServerSizeExceeded || m.EmbeddedItemsSize > 6500000;
+                    bool softLimit = !hardLimit && (m.EmbeddedItemsSize > 4000000 || m.DisplayCost > 13000);
+                    
+                    if (hardLimit) {
+                        UI::PushStyleColor(UI::Col::Text, vec4(1, 0, 0, 1)); // Red
+                        UI::Text(Icons::ExclamationTriangle);
+                        UI::PopStyleColor();
+                    } else if (softLimit) {
+                        UI::PushStyleColor(UI::Col::Text, vec4(1, 1, 0, 1)); // Yellow
+                        UI::Text(Icons::ExclamationTriangle);
+                        UI::PopStyleColor();
+                    } else if (m.EmbeddedItemsSize > 0) {
+                        UI::TextDisabled(tostring(m.EmbeddedItemsSize / 1024) + " KB");
+                    }
+                    
+                    if ((hardLimit || softLimit || m.EmbeddedItemsSize > 0) && UI::IsItemHovered()) {
+                        string tt = "";
+                        if (hardLimit) tt += "\\$f00Critical: Exceeds room size limits.\\$z\n";
+                        else if (softLimit) tt += "\\$ff0Warning: High item size or cost.\\$z\n";
+                        
+                        tt += "Items Size: " + (m.EmbeddedItemsSize / 1024) + " KB";
+                        if (m.DisplayCost > 0) tt += "\nDisplay Cost: " + m.DisplayCost;
+                        UI::SetTooltip(tt);
+                    }
                     
                     UI::TableNextColumn(); UI::Text(m.AtBeaten ? Icons::Check : "-");
                     
@@ -1056,18 +1288,21 @@ namespace UI {
         }
         string[] currentUids;
         // Extract campaign name from response if available
-        if (batchTargetActivity.Type == "campaign" && mapsJson !is null && mapsJson.HasKey("campaign") && mapsJson["campaign"].GetType() == Json::Type::Object) {
+        if (batchTargetActivity.Type == "campaign" && mapsJson !is null && mapsJson.GetType() == Json::Type::Object && mapsJson.HasKey("campaign") && mapsJson["campaign"].GetType() == Json::Type::Object) {
             auto camp = mapsJson["campaign"];
             if (camp.HasKey("name")) campaignName = string(camp["name"]);
         }
 
         Json::Value@ list = GetMapListFromJson(mapsJson);
-        if (list is null && mapsJson !is null && mapsJson.HasKey("campaign")) @list = GetMapListFromJson(mapsJson["campaign"]);
+        if (list is null && mapsJson !is null && mapsJson.GetType() == Json::Type::Object) {
+            if (mapsJson.HasKey("campaign")) @list = GetMapListFromJson(mapsJson["campaign"]);
+            else if (mapsJson.HasKey("room")) @list = GetMapListFromJson(mapsJson["room"]);
+        }
         
         if (list !is null && list.GetType() == Json::Type::Array) {
             for (uint i = 0; i < list.Length; i++) {
                 auto item = list[i];
-                if (item.HasKey("mapUid")) currentUids.InsertLast(item["mapUid"]);
+                if (item.GetType() == Json::Type::Object && item.HasKey("mapUid")) currentUids.InsertLast(item["mapUid"]);
                 else if (item.GetType() == Json::Type::String) currentUids.InsertLast(item);
             }
         }
@@ -1104,72 +1339,139 @@ namespace UI {
         }
     }
 
+    TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
+        TmxMap[] allMatches;
+        TmxSearchFilters@ tempFilters = TmxSearchFilters(f.ToJson());
+        uint batches = 0;
+        bool hasMore = true;
+        
+        while (allMatches.Length < limit && hasMore && batches < 5) {
+            batches++;
+            auto json = API::SearchMaps(tempFilters, 100);
+            if (json is null) break;
+            
+            Json::Value@ results = (json.HasKey("Results")) ? json["Results"] : json;
+            if (results.GetType() != Json::Type::Array || results.Length == 0) break;
+            
+            // Only apply offset on the first batch, and only if requested (audits do, UI doesn't)
+            auto batch = FilterTmxResults(results, f, limit - allMatches.Length, applyOffset && (batches == 1));
+            for (uint i = 0; i < batch.Length; i++) allMatches.InsertLast(batch[i]);
+            
+            hasMore = json.HasKey("More") && bool(json["More"]);
+            if (!hasMore) break;
+            
+            // Advance cursor for next batch
+            int lastId = int(results[results.Length - 1]["MapId"]);
+            tempFilters.PageStartingIds.InsertLast(lastId);
+            tempFilters.CurrentPage++;
+            
+            // If we are performing a UI search (applyOffset=false) and we are the original filters,
+            // we might want to update the cursors for the 'Next Page' button.
+            // But we'll handle that in SearchTMX specifically.
+        }
+        return allMatches;
+    }
+
     void SearchTMX() {
         if (searchInProgress) return;
         searchInProgress = true;
         
-        uint fetchLimit = tmxFilters.PrimaryTagOnly ? 100 : 25;
-        auto json = API::SearchMaps(tmxFilters, fetchLimit);
+        tmxSearchResults.RemoveRange(0, tmxSearchResults.Length);
         
-        if (json !is null) {
-            TmxMap[] items;
-            Json::Value@ list = null;
+        // We want to update the cursors as we go, so we use a temp internal loop
+        TmxSearchFilters@ tempFilters = TmxSearchFilters(tmxFilters.ToJson());
+        uint batches = 0;
+        bool hasMore = true;
+        
+        while (tmxSearchResults.Length < tmxFilters.ResultLimit && hasMore && batches < 5) {
+            batches++;
+            auto json = API::SearchMaps(tempFilters, 100);
+            if (json is null) break;
             
-            // v2 API returns { "Results": [...], "More": bool }
-            if (json.GetType() == Json::Type::Object && json.HasKey("Results")) {
-                @list = json["Results"];
-            } else if (json.GetType() == Json::Type::Array) {
-                @list = json;
-            }
+            Json::Value@ results = (json.HasKey("Results")) ? json["Results"] : json;
+            if (results.GetType() != Json::Type::Array || results.Length == 0) break;
             
-            if (list !is null && list.GetType() == Json::Type::Array) {
-                for (uint i = 0; i < list.Length; i++) {
-                    try {
-                        TmxMap m(list[i]);
-                        // Filter by primary tag if enabled
-                        if (tmxFilters.PrimaryTagOnly && tmxFilters.IncludeTags.Length > 0) {
-                            string searchTag = tmxFilters.IncludeTags[0];
-                            if (m.Tags.Length == 0 || m.Tags[0] != searchTag) continue;
-                        }
-                        items.InsertLast(m);
-                    } catch {
-                        warn("Failed to parse TMX map " + i);
-                    }
+            auto batch = FilterTmxResults(results, tmxFilters, tmxFilters.ResultLimit - tmxSearchResults.Length, false);
+            for (uint i = 0; i < batch.Length; i++) tmxSearchResults.InsertLast(batch[i]);
+            
+            hasMore = json.HasKey("More") && bool(json["More"]);
+            int lastTrackId = int(results[results.Length - 1]["MapId"]);
+            
+            if (tmxSearchResults.Length < tmxFilters.ResultLimit && hasMore) {
+                tempFilters.PageStartingIds.InsertLast(lastTrackId);
+                tempFilters.CurrentPage++;
+                if (int(tmxFilters.PageStartingIds.Length) == tmxFilters.CurrentPage) {
+                    tmxFilters.PageStartingIds.InsertLast(lastTrackId);
                 }
+            } else if (hasMore) {
+                if (int(tmxFilters.PageStartingIds.Length) == tmxFilters.CurrentPage) {
+                    tmxFilters.PageStartingIds.InsertLast(lastTrackId);
+                }
+                break;
+            } else {
+                break;
             }
-            tmxSearchResults = items;
-            tmxSelected.RemoveRange(0, tmxSelected.Length);
-            for (uint i = 0; i < items.Length; i++) tmxSelected.InsertLast(false);
-            
-            bool hasMore = json.HasKey("More") && bool(json["More"]);
-            if (hasMore && items.Length > 0 && tmxFilters.CurrentPage == int(tmxFilters.PageStartingIds.Length)) {
-                // Save the last ID for the next page cursor
-                int lastId = items[items.Length - 1].TrackId;
-                tmxFilters.PageStartingIds.InsertLast(lastId);
-            }
-            
-            print("Found " + tmxSearchResults.Length + " maps on TMX.");
-        } else {
-            Notify("TMX Search failed.");
         }
+
+        // Always ensure selection array matches results, even if we crashed/returned early
+        tmxSelected.RemoveRange(0, tmxSelected.Length);
+        for (uint i = 0; i < tmxSearchResults.Length; i++) tmxSelected.InsertLast(false);
         
+        print("Found " + tmxSearchResults.Length + " maps on TMX (after " + batches + " batches).");
         searchInProgress = false;
     }
 
+    TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
+        TmxMap[] filtered;
+        if (results is null || results.GetType() != Json::Type::Array) return filtered;
+        
+        uint skipCount = (applyOffset && f.CurrentPage > 1) ? (uint(f.CurrentPage - 1) * limit) : 0;
+        uint matchesFound = 0;
+        trace("FilterTmxResults: Page=" + f.CurrentPage + " limit=" + limit + " skipCount=" + skipCount + " applyOffset=" + applyOffset + " results=" + results.Length);
+
+        for (uint i = 0; i < results.Length; i++) {
+            TmxMap m(results[i]);
+            // Filter by primary tag if enabled
+            if (f.PrimaryTagOnly && f.IncludeTags.Length > 0) {
+                string searchTag = f.IncludeTags[0];
+                if (m.Tags.Length == 0 || m.Tags[0] != searchTag) continue;
+            }
+            // Filter by size/cost if enabled
+            if (f.HideOversized) {
+                bool hardLimit = m.ServerSizeExceeded || m.EmbeddedItemsSize > 6500000;
+                bool softLimit = m.EmbeddedItemsSize > 4000000 || m.DisplayCost > 13000;
+                if (hardLimit || softLimit) continue;
+            }
+            
+            matchesFound++;
+            if (matchesFound <= skipCount) continue;
+
+            filtered.InsertLast(m);
+            if (filtered.Length >= limit) break;
+        }
+        return filtered;
+    }
+
     Json::Value@ GetMapListFromJson(Json::Value@ json) {
-        if (json is null || json.GetType() != Json::Type::Object) return null;
-        // Campaign GET response: { campaign: { playlist: [...] } }
-        if (json.HasKey("campaign") && json["campaign"].GetType() == Json::Type::Object) {
-            auto camp = json["campaign"];
-            if (camp.HasKey("playlist")) { return camp["playlist"]; }
+        if (json is null) return null;
+        if (json.GetType() == Json::Type::Array) return json;
+        if (json.GetType() != Json::Type::Object) return null;
+
+        // Check various keys for playlist/map list
+        string[] keys = {"playlist", "maps", "mapList", "mapUidList", "list"};
+        for (uint i = 0; i < keys.Length; i++) {
+            if (json.HasKey(keys[i]) && json[keys[i]].GetType() == Json::Type::Array) return json[keys[i]];
         }
-        if (json.HasKey("playlist")) { return json["playlist"]; }
-        if (json.HasKey("maps")) { return json["maps"]; }
-        if (json.HasKey("resource")) {
-            auto res = json["resource"];
-            if (res.HasKey("maps")) { return res["maps"]; }
-            if (res.HasKey("list")) { return res["list"]; }
+
+        // Campaign/Room nested objects
+        string[] nested = {"campaign", "room", "resource"};
+        for (uint i = 0; i < nested.Length; i++) {
+            if (json.HasKey(nested[i]) && json[nested[i]].GetType() == Json::Type::Object) {
+                auto res = GetMapListFromJson(json[nested[i]]);
+                if (res !is null) return res;
+            }
         }
+
         return null;
     }
 
@@ -1269,6 +1571,7 @@ namespace UI {
         if (a is null || SelectedClub is null) return;
         
         a.LoadingMaps = true;
+        a.Maps.RemoveRange(0, a.Maps.Length);
         uint clubId = SelectedClub.Id;
         string[] uids;
 
@@ -1283,7 +1586,9 @@ namespace UI {
                 if (list !is null && list.GetType() == Json::Type::Array) {
                     for (uint i = 0; i < list.Length; i++) {
                         auto item = list[i];
-                        if (item.HasKey("mapUid")) uids.InsertLast(item["mapUid"]);
+                        if (item.HasKey("mapUid")) {
+                            uids.InsertLast(string(item["mapUid"]).Trim());
+                        }
                     }
                 }
             }
@@ -1291,15 +1596,48 @@ namespace UI {
             auto json = API::GetClubRoom(clubId, a.RoomId);
             trace("GetClubRoom(" + a.RoomId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
             if (json !is null) {
-                // Check top level, then check inside "room" object
-                Json::Value@ list = GetMapListFromJson(json);
-                if (list is null && json.HasKey("room")) @list = GetMapListFromJson(json["room"]);
+                // Check if this room is mirroring a campaign
+                uint campaignId = 0;
+                if (json.HasKey("campaignId") && json["campaignId"].GetType() == Json::Type::Number) {
+                    campaignId = uint(json["campaignId"]);
+                } else if (json.HasKey("room") && json["room"].HasKey("campaignId") && json["room"]["campaignId"].GetType() == Json::Type::Number) {
+                    campaignId = uint(json["room"]["campaignId"]);
+                }
+                a.CampaignId = campaignId; // Update so SEVER button shows up
+                
+                Json::Value@ list = null;
+                if (campaignId > 0) {
+                    trace("Room " + a.Id + " is mirroring Campaign ID " + campaignId + ". Fetching campaign maps.");
+                    uint campaignActivityId = 0;
+                    for (uint i = 0; i < ClubActivities.Length; i++) {
+                        if (ClubActivities[i].Type == "campaign" && ClubActivities[i].CampaignId == campaignId) {
+                            campaignActivityId = ClubActivities[i].Id;
+                            a.MirroringCampaignName = ClubActivities[i].Name;
+                            break;
+                        }
+                    }
+                    if (campaignActivityId > 0) {
+                        auto campJson = API::GetCampaignMaps(clubId, campaignActivityId);
+                        @list = GetMapListFromJson(campJson);
+                        if (list is null && campJson.HasKey("campaign")) @list = GetMapListFromJson(campJson["campaign"]);
+                    } else {
+                        trace("Could not find campaign activity for mirroring campaignId " + campaignId);
+                    }
+                }
+
+                if (list is null) {
+                    @list = GetMapListFromJson(json);
+                    if (list is null && json.HasKey("room")) @list = GetMapListFromJson(json["room"]);
+                }
 
                 if (list !is null && list.GetType() == Json::Type::Array) {
                     for (uint i = 0; i < list.Length; i++) {
                         auto item = list[i];
-                        if (item.HasKey("mapUid")) uids.InsertLast(item["mapUid"]);
-                        else if (item.GetType() == Json::Type::String) uids.InsertLast(item);
+                        string uid = "";
+                        if (item.GetType() == Json::Type::Object && item.HasKey("mapUid")) uid = string(item["mapUid"]).Trim();
+                        else if (item.GetType() == Json::Type::String) uid = string(item).Trim();
+                        
+                        if (uid != "" && !uid.Contains(":error-")) uids.InsertLast(uid);
                     }
                 }
             }
@@ -1329,6 +1667,18 @@ namespace UI {
                     }
                 }
             }
+
+            // Important: API might return maps in different order. Reorder a.Maps to match 'uids' array.
+            MapInfo[] ordered;
+            for (uint i = 0; i < uids.Length; i++) {
+                for (uint j = 0; j < a.Maps.Length; j++) {
+                    if (a.Maps[j].Uid == uids[i]) {
+                        ordered.InsertLast(a.Maps[j]);
+                        break;
+                    }
+                }
+            }
+            a.Maps = ordered;
 
             // Fallback for any UIDs that didn't get metadata
             if (a.Maps.Length < uids.Length) {
@@ -1540,6 +1890,170 @@ namespace UI {
         }
     }
 
+    void DoCreateRoom() {
+        if (SelectedClub is null) return;
+        auto json = API::CreateClubActivity(SelectedClub.Id, nextActivityName, "room");
+        if (json !is null && json.HasKey("activityId")) {
+            uint actId = uint(json["activityId"]);
+            
+            // Note: API::CreateClubActivity now handles required room defaults (script, region, etc.)
+            if (!createAsActive) {
+                API::SetActivityStatus(SelectedClub.Id, actId, false);
+            }
+            
+            Notify("Room created: " + nextActivityName);
+            startnew(RefreshActivities);
+        } else {
+            Notify("Failed to create room.");
+        }
+    }
+
+    void DoAuditSubscription(ref@ data) {
+        Activity@ a = cast<Activity>(data);
+        if (a is null) return;
+        
+        auto sub = Subscriptions::GetByActivity(a.Id);
+        if (sub is null) return;
+        
+        a.IsAuditing = true;
+        a.AuditDone = false;
+        a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
+        a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
+        
+        trace("Auditing subscription for " + a.Name + " (Limit: " + sub.MapLimit + ")");
+        
+        // Force always reloading maps for a fresh audit
+        a.MapsLoaded = false;
+        if (!a.LoadingMaps) {
+            a.LoadingMaps = true; // Set here to prevent race condition before coroutine starts
+            startnew(LoadActivityMaps, a);
+        }
+        while (a.LoadingMaps) yield();
+        
+        uint fetchLimit = sub.Filters.PrimaryTagOnly ? 100 : sub.MapLimit;
+        bool applyOffset = sub.Filters.PageStartingIds.Length < sub.Filters.CurrentPage;
+        auto tmxMaps = FetchMapsSequential(sub.Filters, sub.MapLimit, applyOffset);
+        if (tmxMaps.Length > 0) {
+            
+            string[] tmxUids;
+            for (uint i = 0; i < tmxMaps.Length; i++) {
+                tmxUids.InsertLast(tmxMaps[i].Uid);
+            }
+            
+            // Check for new maps to add
+            for (uint i = 0; i < tmxMaps.Length; i++) {
+                bool found = false;
+                for (uint j = 0; j < a.Maps.Length; j++) {
+                    if (a.Maps[j].Uid == tmxMaps[i].Uid) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) a.AuditAdded.InsertLast(tmxMaps[i]);
+            }
+            
+            // Check for maps to remove (strict curation: if they dropped out of top X)
+            for (uint i = 0; i < a.Maps.Length; i++) {
+                if (tmxUids.Find(a.Maps[i].Uid) < 0) {
+                    a.AuditRemoved.InsertLast(a.Maps[i]);
+                }
+            }
+            
+            // Check for order mismatch
+            a.AuditOrderMismatch = false;
+            trace("DEBUG: Checking order for " + a.Name + ". TMX: " + tmxUids.Length + ", ACT: " + a.Maps.Length);
+            for (uint i = 0; i < tmxUids.Length; i++) {
+                string tmxUid = tmxUids[i].Trim();
+                string actUid = (i < a.Maps.Length) ? a.Maps[i].Uid.Trim() : "NONE";
+                
+                // Tracing every map for debugging with quotes to see hidden spaces
+                trace("  [" + i + "] TMX: '" + tmxUid + "' | ACT: '" + actUid + "'");
+                
+                if (i >= a.Maps.Length || actUid != tmxUid) {
+                    a.AuditOrderMismatch = true;
+                    trace("  >>> MISMATCH DETECTED at index " + i + " ('" + tmxUid + "' vs '" + actUid + "')");
+                    if (uint(tmxUid.Length) == uint(actUid.Length)) {
+                        for (uint k = 0; k < uint(tmxUid.Length); k++) {
+                            if (tmxUid[k] != actUid[k]) {
+                                trace("      Char mismatch at index " + k + ": TMX='" + tmxUid[k] + "' (" + uint(tmxUid[k]) + ") vs ACT='" + actUid[k] + "' (" + uint(actUid[k]) + ")");
+                            }
+                        }
+                    } else {
+                        trace("      Length mismatch: TMX=" + tmxUid.Length + ", ACT=" + actUid.Length);
+                    }
+                    break;
+                }
+            }
+            if (!a.AuditOrderMismatch && a.Maps.Length > tmxUids.Length) {
+                a.AuditOrderMismatch = true; // Activity has extra maps at the end
+            }
+            
+            a.AuditDone = true;
+            sub.LastRun = Time::Now;
+            Subscriptions::Save();
+            trace("Audit done for " + a.Name + ": " + a.AuditAdded.Length + " to add, " + a.AuditRemoved.Length + " to remove, Mismatch: " + a.AuditOrderMismatch);
+        } else {
+            Notify("Audit failed: TMX search error.");
+        }
+        
+        a.IsAuditing = false;
+    }
+
+    void DoApplyAudit(ref@ data) {
+        Activity@ a = cast<Activity>(data);
+        if (a is null) return;
+        
+        if (SelectedClub is null) {
+            Notify("Audit failed: No club selected.");
+            return;
+        }
+
+        auto sub = Subscriptions::GetByActivity(a.Id);
+        if (sub is null) return;
+
+        trace("Applying audit for: " + a.Name);
+
+        // Perform audit again to get the latest TMX UIDs in the right scope
+        uint fetchLimit = sub.Filters.PrimaryTagOnly ? 100 : sub.MapLimit;
+        bool applyOffset = sub.Filters.PageStartingIds.Length < sub.Filters.CurrentPage;
+        auto tmxMaps = FetchMapsSequential(sub.Filters, sub.MapLimit, applyOffset);
+        
+        if (tmxMaps.Length == 0) {
+            Notify("Failed to apply audit: TMX search returned no maps.");
+            return;
+        }
+
+        string[] newUids;
+        for (uint i = 0; i < tmxMaps.Length; i++) {
+            newUids.InsertLast(tmxMaps[i].Uid);
+        }
+        
+        // Update Activity
+        Json::Value@ res;
+        if (a.Type == "campaign") {
+            trace("Updating campaign: " + a.CampaignId);
+            @res = API::SetCampaignMaps(SelectedClub.Id, a.CampaignId, a.Name, newUids);
+            // Also update the parent Activity to refresh map count visibility
+            if (res !is null) {
+                API::SetActivityDetails(SelectedClub.Id, a.Id, a.Name, true, newUids.Length);
+            }
+        } else if (a.Type == "room") {
+            trace("Updating room: " + a.Id);
+            @res = API::SetRoomMaps(SelectedClub.Id, a.Id, newUids);
+        }
+        
+        if (res !is null) {
+            Notify("Audit applied successfully! " + newUids.Length + " maps synchronized.");
+            a.AuditDone = false;
+            a.AuditOrderMismatch = false;
+            // Short delay to let Nadeo API update its internal cache before we reload
+            yield(2000); 
+            startnew(LoadActivityMaps, a);
+        } else {
+            Notify("Failed to apply audit. (Check permission or map sizes)");
+        }
+    }
+
     void Notify(const string &in msg) {
         UI::ShowNotification(Meta::ExecutingPlugin().Name, msg);
     }
@@ -1554,6 +2068,8 @@ namespace UI {
         s %= 60;
         return m + ":" + (s < 10 ? "0" : "") + s;
     }
+
+
 
     void DoSaveRoomSettings(ref@ data) {
         Activity@ a = cast<Activity>(data);
@@ -1573,22 +2089,7 @@ namespace UI {
             Notify("Failed to save room settings.");
         }
     }
-
-    void DoSaveRoomMapOrder(ref@ data) {
-        Activity@ a = cast<Activity>(data);
-        if (a is null || SelectedClub is null) return;
-
-        string[] uids;
-        for (uint i = 0; i < a.PendingMaps.Length; i++) uids.InsertLast(a.PendingMaps[i].Uid);
-
-        auto res = API::SetRoomMaps(SelectedClub.Id, a.RoomId, uids);
-        if (res !is null) {
-            Notify("Room map order saved!");
-            NotifyInfo("Reminder: This updates the live room playlist.");
-            a.IsManagingMaps = false;
-            startnew(LoadActivityMaps, a);
-        } else {
-            Notify("Failed to save room map order.");
-        }
-    }
 }
+
+ 
+ 

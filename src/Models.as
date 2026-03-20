@@ -46,7 +46,12 @@ class MapInfo {
     MapInfo() {}
     MapInfo(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        Uid = json.HasKey("uid") ? string(json["uid"]) : "";
+        // Nadeo API uses mapUid, but we handle variations for robustness
+        if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
+        else if (json.HasKey("uid")) Uid = string(json["uid"]);
+        else if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
+        else if (json.HasKey("MapUID")) Uid = string(json["MapUID"]);
+        else Uid = "";
         Name = json.HasKey("name") ? Text::StripFormatCodes(string(json["name"])) : "Unknown Map";
         AuthorWebServicesId = json.HasKey("author") ? string(json["author"]) : "";
         Author = "Unknown Author";
@@ -63,6 +68,7 @@ class Activity {
     bool Public;
     bool Featured;
     uint CampaignId;
+    string MirroringCampaignName = "";
     uint RoomId;
     uint ParticipantCount = 0;
     string ServerStatus = "";
@@ -82,6 +88,13 @@ class Activity {
     bool IsManagingMaps = false;
     bool IsManagingSettings = false;
     MapInfo[] PendingMaps;
+
+    // Audit results
+    bool IsAuditing = false;
+    bool AuditDone = false;
+    bool AuditOrderMismatch = false;
+    TmxMap[] AuditAdded;
+    MapInfo[] AuditRemoved;
 
     Activity() {}
 
@@ -122,8 +135,8 @@ class Activity {
 
         if (json.HasKey("roomId") && json["roomId"].GetType() != Json::Type::Null) {
             RoomId = uint(json["roomId"]);
-        } else if (Type == "room" && json.HasKey("externalId")) {
-            RoomId = uint(json["externalId"]);
+        } else if (Type == "room") {
+            RoomId = Id;
         }
 
         if (json.HasKey("participantCount") && json["participantCount"].GetType() != Json::Type::Null) {
@@ -148,8 +161,12 @@ class TmxMap {
     uint AwardCount;
     uint RecordCount;
     bool AtBeaten;
-    string[] Tags;
+    string SizeWarning;
     string UploadedAt;
+    bool ServerSizeExceeded;
+    uint EmbeddedItemsSize;
+    uint DisplayCost;
+    string[] Tags;
     bool HasScreenshot;
 
     TmxMap() {}
@@ -158,7 +175,13 @@ class TmxMap {
         if (json.GetType() != Json::Type::Object) return;
         // v2 API field names
         TrackId = json.HasKey("MapId") ? int(json["MapId"]) : 0;
-        Uid = json.HasKey("MapUid") ? string(json["MapUid"]) : "";
+        
+        // TMX API uses MapUid, but we handle variations for robustness
+        if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
+        else if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
+        else if (json.HasKey("MapUID")) Uid = string(json["MapUID"]);
+        else if (json.HasKey("uid")) Uid = string(json["uid"]);
+        else Uid = "";
         Name = json.HasKey("Name") ? Text::StripFormatCodes(string(json["Name"])) : "Unknown Map";
 
         // Uploader is a nested object in v2
@@ -191,10 +214,12 @@ class TmxMap {
         AwardCount = json.HasKey("AwardCount") ? uint(json["AwardCount"]) : 0;
         RecordCount = json.HasKey("ReplayCount") ? uint(json["ReplayCount"]) : (json.HasKey("RecordCount") ? uint(json["RecordCount"]) : 0);
 
-        // Medals in v2: Author (int ms), WrTime (int ms)
-        if (json.HasKey("AuthorBeaten")) {
-            AtBeaten = bool(json["AuthorBeaten"]);
-        } else if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object) {
+        SizeWarning = json.HasKey("SizeWarning") ? string(json["SizeWarning"]) : ""; // Keep just in case it exists too
+        ServerSizeExceeded = json.HasKey("ServerSizeExceeded") ? bool(json["ServerSizeExceeded"]) : false;
+        EmbeddedItemsSize = json.HasKey("EmbeddedItemsSize") ? uint(json["EmbeddedItemsSize"]) : 0;
+        DisplayCost = json.HasKey("DisplayCost") ? uint(json["DisplayCost"]) : 0;
+
+        if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object) {
             auto m = json["Medals"];
             uint at = m.HasKey("Author") ? uint(m["Author"]) : 0;
             uint wr = m.HasKey("WrTime") ? uint(m["WrTime"]) : 0;
@@ -231,12 +256,120 @@ class TmxSearchFilters {
     int SortSecondary = -1;
     int InTOTD = -1;       // -1=any, 1=was TOTD, 0=was not TOTD
     int InOnlineRecords = -1; // -1=any, 1=has my record, 0=no record
+    bool HideOversized = false;
     uint Offset = 0;
     int CurrentPage = 1;
     int[] PageStartingIds = { 0 }; // TrackId to use with 'after' for each page. Page 1 starts at 0 (none).
     bool PrimaryTagOnly = false;
+    uint ResultLimit = 25;
 
     TmxSearchFilters() {}
+
+    TmxSearchFilters(Json::Value@ json) {
+        if (json.GetType() != Json::Type::Object) return;
+        AuthorName = json.HasKey("AuthorName") ? string(json["AuthorName"]) : "";
+        Vehicle = json.HasKey("Vehicle") ? int(json["Vehicle"]) : -1;
+        Difficulty = json.HasKey("Difficulty") ? int(json["Difficulty"]) : -1;
+        TimeFromMs = json.HasKey("TimeFromMs") ? uint(json["TimeFromMs"]) : 0;
+        TimeToMs = json.HasKey("TimeToMs") ? uint(json["TimeToMs"]) : 0;
+        UploadedFrom = json.HasKey("UploadedFrom") ? string(json["UploadedFrom"]) : "";
+        UploadedTo = json.HasKey("UploadedTo") ? string(json["UploadedTo"]) : "";
+        SortPrimary = json.HasKey("SortPrimary") ? int(json["SortPrimary"]) : -1;
+        SortSecondary = json.HasKey("SortSecondary") ? int(json["SortSecondary"]) : -1;
+        InTOTD = json.HasKey("InTOTD") ? int(json["InTOTD"]) : -1;
+        InOnlineRecords = json.HasKey("InOnlineRecords") ? int(json["InOnlineRecords"]) : -1;
+        HideOversized = json.HasKey("HideOversized") ? bool(json["HideOversized"]) : false;
+        PrimaryTagOnly = json.HasKey("PrimaryTagOnly") ? bool(json["PrimaryTagOnly"]) : false;
+        ResultLimit = json.HasKey("ResultLimit") ? uint(json["ResultLimit"]) : 25;
+        CurrentPage = json.HasKey("CurrentPage") ? int(json["CurrentPage"]) : 1;
+
+        if (json.HasKey("IncludeTags") && json["IncludeTags"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["IncludeTags"].Length; i++) IncludeTags.InsertLast(string(json["IncludeTags"][i]));
+        }
+        if (json.HasKey("ExcludeTags") && json["ExcludeTags"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["ExcludeTags"].Length; i++) ExcludeTags.InsertLast(string(json["ExcludeTags"][i]));
+        }
+        if (json.HasKey("PageStartingIds") && json["PageStartingIds"].GetType() == Json::Type::Array) {
+            PageStartingIds.RemoveRange(0, PageStartingIds.Length);
+            for (uint i = 0; i < json["PageStartingIds"].Length; i++) PageStartingIds.InsertLast(int(json["PageStartingIds"][i]));
+        }
+    }
+
+    Json::Value@ ToJson() {
+        Json::Value@ json = Json::Object();
+        trace("  DEBUG [Models.as]: Filters.CurrentPage is " + CurrentPage);
+        json["AuthorName"] = AuthorName;
+        json["Vehicle"] = Vehicle;
+        json["Difficulty"] = Difficulty;
+        json["TimeFromMs"] = TimeFromMs;
+        json["TimeToMs"] = TimeToMs;
+        json["UploadedFrom"] = UploadedFrom;
+        json["UploadedTo"] = UploadedTo;
+        json["SortPrimary"] = SortPrimary;
+        json["SortSecondary"] = SortSecondary;
+        json["InTOTD"] = InTOTD;
+        json["InOnlineRecords"] = InOnlineRecords;
+        json["HideOversized"] = HideOversized;
+        json["PrimaryTagOnly"] = PrimaryTagOnly;
+        json["ResultLimit"] = ResultLimit;
+        json["CurrentPage"] = CurrentPage;
+        // trace("TmxSearchFilters::ToJson - Page: " + CurrentPage);
+        
+        Json::Value@ inc = Json::Array();
+        for (uint i = 0; i < IncludeTags.Length; i++) inc.Add(IncludeTags[i]);
+        json["IncludeTags"] = inc;
+        
+        Json::Value@ exc = Json::Array();
+        for (uint i = 0; i < ExcludeTags.Length; i++) exc.Add(ExcludeTags[i]);
+        json["ExcludeTags"] = exc;
+        
+        Json::Value@ pids = Json::Array();
+        for (uint i = 0; i < PageStartingIds.Length; i++) pids.Add(PageStartingIds[i]);
+        json["PageStartingIds"] = pids;
+        
+        return json;
+    }
+}
+
+class Subscription {
+    uint ActivityId;
+    string ActivityName;
+    TmxSearchFilters@ Filters;
+    uint MapLimit = 25;
+    uint LastRun = 0;
+    string[] CurrentMapUids;
+
+    Subscription() {
+        @Filters = TmxSearchFilters();
+    }
+
+    Subscription(Json::Value@ json) {
+        if (json.GetType() != Json::Type::Object) return;
+        ActivityId = json.HasKey("ActivityId") ? uint(json["ActivityId"]) : 0;
+        ActivityName = json.HasKey("ActivityName") ? string(json["ActivityName"]) : "";
+        @Filters = json.HasKey("Filters") ? TmxSearchFilters(json["Filters"]) : TmxSearchFilters();
+        MapLimit = json.HasKey("MapLimit") ? uint(json["MapLimit"]) : 25;
+        LastRun = json.HasKey("LastRun") ? uint(json["LastRun"]) : 0;
+        
+        if (json.HasKey("CurrentMapUids") && json["CurrentMapUids"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["CurrentMapUids"].Length; i++) CurrentMapUids.InsertLast(string(json["CurrentMapUids"][i]));
+        }
+    }
+
+    Json::Value@ ToJson() {
+        Json::Value@ json = Json::Object();
+        json["ActivityId"] = ActivityId;
+        json["ActivityName"] = ActivityName;
+        json["Filters"] = Filters.ToJson();
+        json["MapLimit"] = MapLimit;
+        json["LastRun"] = LastRun;
+        
+        Json::Value@ maps = Json::Array();
+        for (uint i = 0; i < CurrentMapUids.Length; i++) maps.Add(CurrentMapUids[i]);
+        json["CurrentMapUids"] = maps;
+        
+        return json;
+    }
 }
 
 namespace TMX {

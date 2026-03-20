@@ -11,6 +11,7 @@ void Main() {
     if (!CheckPermissions()) return;
     UserHasPermissions = true;
     AddAudiences();
+    Subscriptions::Load();
     trace("Club Manager Loaded");
 }
 
