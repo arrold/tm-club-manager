@@ -177,6 +177,11 @@ class ClubsTab : Tab {
             if (Subscriptions::GetByActivity(a.Id) !is null) label += " \\$f80" + Icons::Rss;
 
             nodeOpen = bool(UI::TreeNode(label + "##node"));
+            if (a.HasMapChanges) {
+                UI::SameLine();
+                UI::Text("\\$f44" + Icons::FloppyO);
+                if (UI::IsItemHovered()) UI::SetTooltip("Unsaved Changes (Click Save below)");
+            }
             UI::SameLine();
             if (UI::Button(Icons::Pencil + "##rename_btn")) { a.IsRenaming = true; a.RenameBuffer = a.Name; }
 
@@ -281,19 +286,18 @@ class ClubsTab : Tab {
                             UI::EndDisabled();
                             UI::PopID();
                         }
-                        UI::EndTable();
-                    }
-                    
-                    if (a.HasMapChanges) {
-                        UI::PushStyleColor(UI::Col::Button, vec4(0.1f, 0.6f, 0.1f, 0.8f));
-                        if (UI::Button(Icons::FloppyO + " Save Changes##" + a.Id)) startnew(DoSaveMapChanges, a);
-                        UI::PopStyleColor();
-                        UI::SameLine();
-                        if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardMapChanges, a);
-                        UI::SameLine();
-                        UI::TextDisabled("(Unsaved Changes)");
-                    }
-                } else {
+                            UI::EndTable();
+                        }
+                        if (a.HasMapChanges) {
+                            UI::PushStyleColor(UI::Col::Button, vec4(0.1f, 0.6f, 0.1f, 0.8f));
+                            if (UI::Button(Icons::FloppyO + " Save Changes##" + a.Id)) startnew(DoSaveMapChanges, a);
+                            UI::PopStyleColor();
+                            UI::SameLine();
+                            if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardMapChanges, a);
+                            UI::SameLine();
+                            UI::TextDisabled("(Unsaved Changes)");
+                        }
+                    } else {
                     for (uint i = 0; i < a.Maps.Length; i++) {
                         UI::Text(" " + (i + 1) + ". " + a.Maps[i].Name + " by " + a.Maps[i].Author);
                     }

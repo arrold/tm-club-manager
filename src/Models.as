@@ -96,6 +96,11 @@ class MapInfo {
         AuthorWebServicesId = json.HasKey("author") ? string(json["author"]) : "";
         Author = "Unknown Author";
     }
+    MapInfo(LocalMap@ lm) {
+        Uid = lm.Uid;
+        Name = lm.Name;
+        Author = "Local Map";
+    }
 }
 
 class Activity {
@@ -459,6 +464,7 @@ class LocalMap {
     bool IsPlayable;
     bool IsValidated;
     bool IsUploaded;
+    bool Selected = false;
 
     LocalMap() {}
     LocalMap(CGameCtnChallengeInfo@ info) {

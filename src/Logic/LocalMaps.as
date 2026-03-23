@@ -195,22 +195,81 @@ void DoAddLocalMap(ref@ r) {
     LocalMap@ m = cast<LocalMap>(r);
     if (m is null || State::SelectedClub is null || State::TargetActivity is null) return;
 
+    if (!State::TargetActivity.MapsLoaded && !State::TargetActivity.LoadingMaps) {
+        trace("DoAddLocalMap: Loading existing maps for " + State::TargetActivity.Name + " first...");
+        LoadActivityMaps(State::TargetActivity);
+    }
+
     if (!Nadeo::IsMapUploaded(m.Uid)) {
         UI::ShowNotification("Club Manager", "Map '" + m.Name + "' is not registered. Registering now...", vec4(1, .8, .1, .8), 5000);
         if (!Nadeo::RegisterMap(m.Uid)) {
             UI::ShowNotification("Club Manager", "Failed to register map: " + m.Name, vec4(1, .2, .2, .8), 10000);
             return;
         }
+        yield();
     }
 
-    string[] uids = { m.Uid };
-    if (State::TargetActivity.Type == "campaign") {
-        API::SetCampaignMaps(State::SelectedClub.Id, State::TargetActivity.Id, State::TargetActivity.Name, uids);
-    } else if (State::TargetActivity.Type == "room") {
-        API::SetRoomMaps(State::SelectedClub.Id, State::TargetActivity.Id, uids);
+    trace("[LocalMaps] Immediate Add: Adding " + m.Uid + " to " + State::TargetActivity.Name);
+    
+    // 1. Prepare new UID list from current in-memory maps (buffered or not)
+    string[] uids;
+    for (uint i = 0; i < State::TargetActivity.Maps.Length; i++) {
+        if (!State::TargetActivity.Maps[i].PendingDelete)
+            uids.InsertLast(State::TargetActivity.Maps[i].Uid);
     }
     
-    UI::ShowNotification("Club Manager", "Added '" + m.Name + "' to " + State::TargetActivity.Name);
-    startnew(RefreshActivities);
+    // Avoid duplicates if already in list
+    if (uids.Find(m.Uid) < 0) uids.InsertLast(m.Uid);
+    else {
+        UI::ShowNotification("Club Manager", "Map already in activity: " + m.Name);
+        return;
+    }
+
+    // 2. Commit to server
+    ApplyBatchToActivity(State::TargetActivity, uids);
+    State::TargetActivity.HasMapChanges = false;
+    
+    // 3. Confirm and sync
+    UI::ShowNotification("Club Manager", "Successfully added '" + m.Name + "' to " + State::TargetActivity.Name, vec4(0, 1, 0, 1));
+    startnew(LoadActivityMaps, State::TargetActivity);
+}
+
+void DoAddSelectedLocalMaps() {
+    if (State::SelectedClub is null || State::TargetActivity is null) return;
+    
+    auto a = State::TargetActivity;
+    if (!a.MapsLoaded && !a.LoadingMaps) {
+        trace("DoAddSelectedLocalMaps: Loading existing maps first...");
+        LoadActivityMaps(a);
+    }
+
+    string[] uids;
+    for (uint i = 0; i < a.Maps.Length; i++) {
+        if (!a.Maps[i].PendingDelete) uids.InsertLast(a.Maps[i].Uid);
+    }
+
+    uint count = 0;
+    for (uint i = 0; i < State::LocalMaps.Length; i++) {
+        auto m = State::LocalMaps[i];
+        if (m !is null && m.Selected) {
+            if (!Nadeo::IsMapUploaded(m.Uid)) {
+                if (!Nadeo::RegisterMap(m.Uid)) continue;
+                yield(); // Research suggested delay after registration
+            }
+            if (uids.Find(m.Uid) < 0) {
+                uids.InsertLast(m.Uid);
+                count++;
+            }
+            m.Selected = false; // Reset
+        }
+    }
+    
+    if (count > 0) {
+        trace("[LocalMaps] Immediate Bulk Add: Committing " + count + " maps to " + a.Name);
+        ApplyBatchToActivity(a, uids);
+        a.HasMapChanges = false;
+        UI::ShowNotification("Club Manager", "Successfully added " + count + " maps to " + a.Name, vec4(0, 1, 0, 1));
+        startnew(LoadActivityMaps, a);
+    }
 }
 

@@ -51,9 +51,20 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
         auto list = resp["activityList"];
         for (uint i = 0; i < list.Length; i++) {
             Activity a(list[i]);
+            
+            // Re-use existing activity handle if it has unsaved changes
+            Activity@ toAdd = a;
+            for (uint j = 0; j < State::ClubActivities.Length; j++) {
+                if (State::ClubActivities[j].Id == a.Id && State::ClubActivities[j].HasMapChanges) {
+                    @toAdd = State::ClubActivities[j];
+                    trace("Preserving buffered activity: " + toAdd.Name);
+                    break;
+                }
+            }
+
             bool duplicate = false;
-            for (uint j = 0; j < items.Length; j++) if (items[j].Id == a.Id) { duplicate = true; break; }
-            if (!duplicate) items.InsertLast(a);
+            for (uint j = 0; j < items.Length; j++) if (items[j].Id == toAdd.Id) { duplicate = true; break; }
+            if (!duplicate) items.InsertLast(toAdd);
         }
     }
 }
@@ -145,6 +156,12 @@ void LoadActivityMaps(ref@ r) {
     if (a is null || State::SelectedClub is null) return;
     
     a.LoadingMaps = true;
+    if (a.HasMapChanges) {
+        trace("LoadActivityMaps: " + a.Name + " has unsaved changes, skipping reload.");
+        a.LoadingMaps = false;
+        a.MapsLoaded = true;
+        return;
+    }
     a.Maps.RemoveRange(0, a.Maps.Length);
     uint clubId = State::SelectedClub.Id;
     string[] uids;

@@ -1,6 +1,8 @@
 // Tabs/LocalMapsTab.as - Local Maps Browser (Zertrov Style)
 
 class LocalMapsTab : Tab {
+    bool selectAll = false;
+
     LocalMapsTab() {
         super("Local Maps", Icons::FolderOpenO);
     }
@@ -31,6 +33,12 @@ class LocalMapsTab : Tab {
         if (UI::Button(Icons::Refresh + " Refresh Local Maps")) {
             startnew(RefreshLocalMaps);
         }
+        UI::SameLine();
+        UI::BeginDisabled(State::TargetActivity is null);
+        if (UI::Button(Icons::Plus + " Add Selected to " + (State::TargetActivity !is null ? State::TargetActivity.Name : "Activity"))) {
+            startnew(DoAddSelectedLocalMaps);
+        }
+        UI::EndDisabled();
 
         UI::Separator();
 
@@ -45,12 +53,25 @@ class LocalMapsTab : Tab {
             return;
         }
 
-        if (UI::BeginTable("LocalMapsList", 4, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
+        if (UI::BeginTable("LocalMapsList", 5, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
+            UI::TableSetupColumn("##sel", UI::TableColumnFlags::WidthFixed, 25);
             UI::TableSetupColumn("S", UI::TableColumnFlags::WidthFixed, 25);
             UI::TableSetupColumn("Map Name");
             UI::TableSetupColumn("Filename");
             UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 120);
-            UI::TableHeadersRow();
+            
+            // Header row with "Select All"
+            UI::TableNextRow(UI::TableRowFlags::Headers);
+            UI::TableNextColumn();
+            if (UI::Checkbox("##sel_all", selectAll)) {
+                for (uint i = 0; i < State::LocalMaps.Length; i++) {
+                    if (State::LocalMaps[i] !is null) State::LocalMaps[i].Selected = selectAll;
+                }
+            }
+            UI::TableNextColumn(); UI::Text("S");
+            UI::TableNextColumn(); UI::Text("Map Name");
+            UI::TableNextColumn(); UI::Text("Filename");
+            UI::TableNextColumn(); UI::Text("Actions");
 
             for (uint i = 0; i < State::LocalMaps.Length; i++) {
                 auto@ m = State::LocalMaps[i];
@@ -58,6 +79,9 @@ class LocalMapsTab : Tab {
                 if (m.Uid == "" || !m.IsValidated) continue;
 
                 UI::TableNextRow();
+                UI::TableNextColumn();
+                m.Selected = UI::Checkbox("##sel_" + i, m.Selected);
+
                 UI::TableNextColumn(); 
                 if (m.IsUploaded) {
                     UI::Text(Icons::CloudUpload);
@@ -74,7 +98,7 @@ class LocalMapsTab : Tab {
                 UI::TableNextColumn(); UI::TextDisabled(m.Filename);
                 UI::TableNextColumn();
                 UI::BeginDisabled(State::TargetActivity is null);
-                if (UI::Button("Add to " + (State::TargetActivity !is null ? State::TargetActivity.Type : "Activity") + "##" + i)) {
+                if (UI::Button("Add##" + i)) {
                     startnew(DoAddLocalMap, m);
                 }
                 UI::EndDisabled();
