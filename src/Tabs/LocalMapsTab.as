@@ -39,18 +39,14 @@ class LocalMapsTab : Tab {
             return;
         }
 
-        uint validatedCount = 0;
-        for (uint i = 0; i < State::LocalMaps.Length; i++) {
-            if (State::LocalMaps[i].IsValidated) validatedCount++;
-        }
-
-        if (validatedCount == 0) {
-            UI::TextDisabled("No validated maps found in Documents/Trackmania/Maps/");
+        if (State::LocalMaps.Length == 0) {
+            UI::TextDisabled("No maps found in Documents/Trackmania/Maps/");
             UI::TextDisabled("Try clicking 'Refresh' above.");
             return;
         }
 
-        if (UI::BeginTable("LocalMapsList", 3, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
+        if (UI::BeginTable("LocalMapsList", 4, UI::TableFlags::RowBg | UI::TableFlags::ScrollY | UI::TableFlags::Resizable)) {
+            UI::TableSetupColumn("S", UI::TableColumnFlags::WidthFixed, 25);
             UI::TableSetupColumn("Map Name");
             UI::TableSetupColumn("Filename");
             UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 120);
@@ -58,8 +54,22 @@ class LocalMapsTab : Tab {
 
             for (uint i = 0; i < State::LocalMaps.Length; i++) {
                 auto@ m = State::LocalMaps[i];
-                if (!m.IsValidated) continue;
+                // Only show if validated in editor (playable).
+                if (m.Uid == "" || !m.IsValidated) continue;
+
                 UI::TableNextRow();
+                UI::TableNextColumn(); 
+                if (m.IsUploaded) {
+                    UI::Text(Icons::CloudUpload);
+                    if (UI::IsItemHovered()) UI::SetTooltip("Uploaded to Nadeo");
+                } else if (m.IsValidated) {
+                    UI::Text(Icons::Check);
+                    if (UI::IsItemHovered()) UI::SetTooltip("Validated in Editor");
+                } else {
+                    UI::TextDisabled(Icons::ExclamationTriangle);
+                    if (UI::IsItemHovered()) UI::SetTooltip("Not Validated (Editor)");
+                }
+
                 UI::TableNextColumn(); UI::Text(m.Name);
                 UI::TableNextColumn(); UI::TextDisabled(m.Filename);
                 UI::TableNextColumn();

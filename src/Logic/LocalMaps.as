@@ -58,16 +58,16 @@ void RefreshLocalMaps() {
     State::refreshingLocalMaps = true;
     State::LocalMaps.RemoveRange(0, State::LocalMaps.Length);
 
+    // Truncate debug log at start of refresh
+    IO::File logTruncate;
+    logTruncate.Open("c:/Users/simon/repos/tm/plugins/tm-club-manager/debug-d1d6a7.log", IO::FileMode::Write);
+    logTruncate.Close();
+
     string mapsDir = IO::FromUserGameFolder("Maps/");
     string mapsDirNorm = mapsDir.Replace("\\", "/");
     if (!mapsDirNorm.EndsWith("/")) mapsDirNorm += "/";
     
     trace("[Local] Indexing maps in directory: " + mapsDir);
-    
-    // Refresh the Fids cache for the Maps directory
-    WalkFidsFolder("Maps");
-    WalkFidsFolder("Maps/");
-    yield();
     
     array<string> files = IO::IndexFolder(mapsDir, true);
     trace("[Local] IO::IndexFolder found " + files.Length + " files.");
@@ -80,49 +80,56 @@ void RefreshLocalMaps() {
         string absPath = files[i];
         string fileNorm = absPath.Replace("\\", "/");
         
-        if (fileNorm.ToLower().EndsWith(".map.gbx")) {
+        string relPath = fileNorm;
+        if (relPath.StartsWith(mapsDirNorm)) {
+            relPath = relPath.SubStr(mapsDirNorm.Length);
+        }
+
+        string relLower = relPath.ToLower();
+        if (relLower.Contains("/autosaves/") || relLower.StartsWith("autosaves/")) {
+            continue;
+        }
+
+        if (relLower.EndsWith(".map.gbx")) {
             mapGbxCount++;
             
-            // Build relative path for Fids
-            string relPart = fileNorm;
-            if (relPart.StartsWith(mapsDirNorm)) {
-                relPart = relPart.SubStr(mapsDirNorm.Length);
-            }
-            string fidsPath = "Maps/" + relPart;
-            
-            auto info = TryGetMapInfo(fidsPath);
-            if (info !is null) {
-                LocalMap@ m = LocalMap(info);
-                // Keep full filename/path for display; derive a clean map name separately.
-                m.Name = GetDisplayNameFromFilename(m.Filename);
-                if (m !is null && m.IsValidated) fidsValidated++;
+            // Primary Strategy: Manual Gbx Parsing (Fast & Reliable)
+            auto header = Gbx::ReadHeader(absPath);
+            if (header !is null && header.Uid != "") {
+                if (mapGbxCount < 5) trace("[Local] Parsed: " + relPath + " (UID: " + header.Uid + ", Validated: " + header.IsValidated + ")");
+                LocalMap@ m = LocalMap();
+                m.Uid = header.Uid;
+                m.Filename = "Maps/" + relPath; // Clean relative path
+                m.Name = header.Name != "" ? header.Name : GetDisplayNameFromFilename(absPath);
+                m.IsPlayable = true;
+                m.IsValidated = header.IsValidated; // Use editor validation
+                
+                manualParsed++;
+                if (m.IsValidated) manualValidated++;
                 State::LocalMaps.InsertLast(m);
-                if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Fids): " + info.Name);
+                if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Manual Gbx): " + m.Name);
             } else {
-                // Option A: Manual Gbx Parsing Fallback
-                auto header = Gbx::ReadHeader(absPath);
-                if (header !is null) {
-                    LocalMap@ m = LocalMap();
-                    m.Uid = header.Uid;
-                    // Keep full filename/path for display.
-                    m.Filename = absPath;
-                    // For UI display, prefer filename-derived "known map" naming.
+                // Secondary Strategy: Fids as Fallback
+                string fidsPath = "Maps/" + relPath;
+                auto info = TryGetMapInfo(fidsPath);
+                if (info !is null) {
+                    LocalMap@ m = LocalMap(info);
+                    m.Filename = fidsPath;
                     m.Name = GetDisplayNameFromFilename(m.Filename);
-                    manualParsed++;
-                    // Manual GBX: consider validated if we extracted a plausible UID.
-                    m.IsValidated = (m.Uid != "" && m.Uid.Length == 27);
-                    if (m.IsValidated) manualValidated++;
-                    m.IsPlayable = true;
+                    if (m.IsValidated) fidsValidated++;
                     State::LocalMaps.InsertLast(m);
-                    if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Manual Gbx): " + m.Name);
+                    if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Fids): " + info.Name);
+                } else {
+                    // Trace why we skipped this .Map.Gbx
+                    if (mapGbxCount < 10) trace("[Local] Skipped non-parsed map: " + relPath);
                 }
             }
         }
-        if (i % 50 == 0) yield();
+        if (i % 100 == 0) yield();
     }
     
     if (State::LocalMaps.Length == 0 && mapGbxCount > 0) {
-        warn("[Local] Found " + mapGbxCount + " .Map.Gbx files but failed to retrieve MapInfo for any (neither Fids nor Manual Gbx worked).");
+        warn("[Local] Found " + mapGbxCount + " .Map.Gbx files but failed to retrieve MapInfo for any.");
     }
 
     // Sort by Filename
@@ -159,7 +166,7 @@ void RefreshLocalMaps() {
             checkedUploaded.InsertLast(uploaded);
         }
 
-        m.IsValidated = uploaded;
+        m.IsUploaded = uploaded;
         if (uploaded) serverValidated++;
 
         if (i % 10 == 0) yield();

@@ -456,6 +456,7 @@ class LocalMap {
     string Filename;
     bool IsPlayable;
     bool IsValidated;
+    bool IsUploaded;
 
     LocalMap() {}
     LocalMap(CGameCtnChallengeInfo@ info) {
