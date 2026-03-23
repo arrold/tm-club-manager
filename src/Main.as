@@ -12,7 +12,13 @@ void Main() {
     UserHasPermissions = true;
     AddAudiences();
     Subscriptions::Load();
-    trace("Club Manager Loaded");
+    
+    // Initialize UI Tabs (Zertrov Style)
+    CM_UI::tabs.InsertLast(ClubsTab());
+    CM_UI::tabs.InsertLast(CurationTab());
+    CM_UI::tabs.InsertLast(LocalMapsTab());
+    
+    trace("Club Manager Loaded (Modular Architecture)");
 }
 
 bool notifiedPermissionsMissing = false;
@@ -32,36 +38,22 @@ void AddAudiences() {
     while (!NadeoServices::IsAuthenticated("NadeoLiveServices") || !NadeoServices::IsAuthenticated("NadeoServices")) yield();
 }
 
+void Notify(const string &in msg) {
+    UI::ShowNotification(Meta::ExecutingPlugin().Name, msg);
+}
+
+void NotifyError(const string &in msg) {
+    warn(msg);
+    UI::ShowNotification(Meta::ExecutingPlugin().Name + ": Error", msg, vec4(.9, .3, .1, .3), 15000);
+}
+
 void RenderInterface() {
-    if (!windowVisible) return;
-    
-    UI::SetNextWindowSize(600, 400, UI::Cond::FirstUseEver);
-    if (UI::Begin("Club Manager", windowVisible, UI::WindowFlags::MenuBar)) {
-        if (!UserHasPermissions) {
-            UI::Text("\\$f00Missing Openplanet Permissions (Club Access required)");
-        } else {
-            if (UI::BeginMenuBar()) {
-                if (UI::BeginMenu("Settings")) {
-                    if (UI::MenuItem("Hide Window")) windowVisible = false;
-                    UI::EndMenu();
-                }
-                UI::EndMenuBar();
-            }
-            UI::RenderDashboard();
-        }
-    }
-    UI::End();
+    CM_UI::Render();
 }
 
 /** Render function called when the menu is opened. */
 void RenderMenu() {
     if (UI::MenuItem("Club Manager", "", windowVisible)) {
         windowVisible = !windowVisible;
-        trace("Club Manager window toggled: " + windowVisible);
     }
-}
-
-void NotifyError(const string &in msg) {
-    warn(msg);
-    UI::ShowNotification(Meta::ExecutingPlugin().Name + ": Error", msg, vec4(.9, .3, .1, .3), 15000);
 }

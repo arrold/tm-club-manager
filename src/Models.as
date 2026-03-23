@@ -1,39 +1,79 @@
-// Club Manager - Models.as
+// Models.as - Data Models & JSON Helpers (Zertrov Style)
+
+// --- Safe JSON Helpers ---
+
+uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0) {
+    if (json is null || !json.HasKey(key)) return defaultValue;
+    auto v = json[key];
+    if (v.GetType() == Json::Type::Number) return uint(v);
+    if (v.GetType() == Json::Type::String) return Text::ParseUInt(string(v));
+    return defaultValue;
+}
+
+int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
+    if (json is null || !json.HasKey(key)) return defaultValue;
+    auto v = json[key];
+    if (v.GetType() == Json::Type::Number) return int(v);
+    if (v.GetType() == Json::Type::String) return Text::ParseInt(string(v));
+    return defaultValue;
+}
+
+bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = false) {
+    if (json is null || !json.HasKey(key)) return defaultValue;
+    auto v = json[key];
+    if (v.GetType() == Json::Type::Boolean) return bool(v);
+    if (v.GetType() == Json::Type::Number) return int(v) != 0;
+    if (v.GetType() == Json::Type::String) {
+        string s = string(v).ToLower();
+        return s == "true" || s == "1";
+    }
+    return defaultValue;
+}
+
+string JsonGetString(Json::Value@ json, const string &in key, const string &in defaultValue = "") {
+    if (json is null || !json.HasKey(key)) return defaultValue;
+    auto v = json[key];
+    if (v.GetType() == Json::Type::String) return string(v);
+    if (v.GetType() == Json::Type::Number || v.GetType() == Json::Type::Boolean) return Json::Write(v);
+    return defaultValue;
+}
+
+// --- Classes ---
 
 class Club {
     uint Id;
     string Name;
     string Tag;
     string Description;
+    string Role;
+    bool Public;
     string IconUrl;
     string VerticalUrl;
     string BackgroundUrl;
-    string Role; // "MEMBER", "ADMIN", "CREATOR"
     string StadiumGrassUrl;
     string StadiumTerrainUrl;
     string StadiumLogoUrl;
-    bool Public;
 
     Club() {}
-
     Club(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        Id = json.HasKey("id") ? uint(json["id"]) : 0;
-        Name = json.HasKey("name") ? Text::StripFormatCodes(string(json["name"])) : "Unknown Club";
-        Tag = json.HasKey("tag") ? Text::StripFormatCodes(string(json["tag"])) : "";
-        Description = json.HasKey("description") ? string(json["description"]) : "";
-        IconUrl = json.HasKey("iconUrl") ? string(json["iconUrl"]) : "";
-        VerticalUrl = json.HasKey("verticalUrl") ? string(json["verticalUrl"]) : "";
-        BackgroundUrl = json.HasKey("backgroundUrl") ? string(json["backgroundUrl"]) : "";
-        StadiumGrassUrl = json.HasKey("stadiumGrassUrl") ? string(json["stadiumGrassUrl"]) : "";
-        StadiumTerrainUrl = json.HasKey("stadiumTerrainUrl") ? string(json["stadiumTerrainUrl"]) : "";
-        StadiumLogoUrl = json.HasKey("stadiumLogoUrl") ? string(json["stadiumLogoUrl"]) : "";
-        Public = json.HasKey("public") ? bool(json["public"]) : true;
-        if (json.HasKey("role")) {
-            Role = json["role"];
-        } else {
-            Role = "Member";
-        }
+        
+        if (json.HasKey("id")) Id = uint(json["id"]);
+        else if (json.HasKey("clubId")) Id = uint(json["clubId"]);
+        else Id = 0;
+
+        Name = Text::StripFormatCodes(JsonGetString(json, "name", "Unknown Club"));
+        Tag = JsonGetString(json, "tag");
+        Description = JsonGetString(json, "description");
+        Role = JsonGetString(json, "role", "Member");
+        Public = JsonGetBool(json, "public");
+        
+        IconUrl = JsonGetString(json, "iconUrl");
+        VerticalUrl = JsonGetString(json, "verticalUrl");
+        BackgroundUrl = JsonGetString(json, "backgroundUrl");
+        StadiumGrassUrl = JsonGetString(json, "stadiumGrassUrl");
+        StadiumTerrainUrl = JsonGetString(json, "stadiumTerrainUrl");
+        StadiumLogoUrl = JsonGetString(json, "stadiumLogoUrl");
     }
 }
 
@@ -46,7 +86,6 @@ class MapInfo {
     MapInfo() {}
     MapInfo(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        // Nadeo API uses mapUid, but we handle variations for robustness
         if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
         else if (json.HasKey("uid")) Uid = string(json["uid"]);
         else if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
@@ -61,38 +100,36 @@ class MapInfo {
 class Activity {
     uint Id;
     string Name;
-    uint Position;
-    uint FolderId;
-    string Type; // "folder", "campaign", "room"
+    string Type; // campaign, room, folder, news
     bool Active;
     bool Public;
     bool Featured;
-    uint CampaignId;
+    uint FolderId;
+    uint Position;
+    
+    // Metadata properties
+    uint CampaignId = 0;
     string MirroringCampaignName = "";
-    uint RoomId;
-    uint ParticipantCount = 0;
-    string ServerStatus = "";
-    string Script = "";
-    int MaxPlayers = 32;
-    bool Scalable = true;
-    string Region = "";
-    string Password = "";
-    string IconUrl = "";
-    string VerticalUrl = "";
-    string BackgroundUrl = "";
+    uint RoomId = 0;
+    
     MapInfo[] Maps;
+    MapInfo[] PendingMaps;
+    
+    // Metadata for UI
     bool MapsLoaded = false;
     bool LoadingMaps = false;
-
-    // UI state
+    bool NewsLoaded = false;
     bool IsRenaming = false;
     string RenameBuffer = "";
     bool PendingDelete = false;
     bool IsManagingMaps = false;
-    bool IsManagingSettings = false;
-    MapInfo[] PendingMaps;
 
-    // Audit results
+    // News specific
+    string Headline;
+    string Body;
+    string Description;
+
+    // Curation specific
     bool IsAuditing = false;
     bool AuditDone = false;
     bool AuditOrderMismatch = false;
@@ -100,66 +137,41 @@ class Activity {
     MapInfo[] AuditRemoved;
 
     Activity() {}
-
     Activity(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        Id = json.HasKey("id") ? uint(json["id"]) : 0;
-        string rawName = json.HasKey("name") ? string(json["name"]) : "Unknown Activity";
-        // Strip |ClubActivity| and pipes
-        Name = rawName.Replace("|ClubActivity|", "").Replace("|", "");
-        Name = Text::StripFormatCodes(Name);
-        Position = json.HasKey("position") ? uint(json["position"]) : 0;
         
-        // Handle folderId/parentId safely (can be null)
-        if (json.HasKey("folderId") && json["folderId"].GetType() != Json::Type::Null) {
-            FolderId = uint(json["folderId"]);
-        } else if (json.HasKey("parentId") && json["parentId"].GetType() != Json::Type::Null) {
-            FolderId = uint(json["parentId"]);
-        } else {
-            FolderId = 0;
-        }
+        if (json.HasKey("id")) Id = uint(json["id"]);
+        else if (json.HasKey("activityId")) Id = uint(json["activityId"]);
+        else Id = 0;
 
-        Type = json.HasKey("activityType") ? string(json["activityType"]) : (json.HasKey("type") ? string(json["type"]) : "");
-        Active = json.HasKey("active") ? bool(json["active"]) : false;
-        Public = json.HasKey("public") ? bool(json["public"]) : true;
-        Featured = json.HasKey("featured") ? bool(json["featured"]) : false;
-        Description = json.HasKey("description") ? string(json["description"]) : "";
+        Name = JsonGetString(json, "name", "Unknown Activity");
+        // Cleanup |ClubActivity| tags
+        Name = Name.Replace("|ClubActivity|", "").Replace("|", "");
+        Name = Text::StripFormatCodes(Name);
+
+        Type = JsonGetString(json, "activityType");
+        Active = JsonGetBool(json, "active");
+        Public = JsonGetBool(json, "public");
+        Featured = JsonGetBool(json, "featured");
+        FolderId = JsonGetUint(json, "folderId");
+        if (FolderId == 0) FolderId = JsonGetUint(json, "parentId");
+        Position = JsonGetUint(json, "position");
         
-        // News mapping basics
+        Description = JsonGetString(json, "description");
         if (Type == "news") {
             Headline = Name;
             Body = Description;
         }
-        if (json.HasKey("campaignId") && json["campaignId"].GetType() != Json::Type::Null) {
-            CampaignId = uint(json["campaignId"]);
-        } else if (Type == "campaign" && json.HasKey("externalId")) {
-            CampaignId = uint(json["externalId"]);
-        }
-
-        if (json.HasKey("roomId") && json["roomId"].GetType() != Json::Type::Null) {
-            RoomId = uint(json["roomId"]);
+        
+        // Resolve type-specific IDs
+        if (Type == "campaign") {
+            CampaignId = JsonGetUint(json, "campaignId");
+            if (CampaignId == 0) CampaignId = Id; // fallback: activity ID often == resource ID for campaigns
         } else if (Type == "room") {
-            RoomId = Id;
+            RoomId = JsonGetUint(json, "roomId");
+            if (RoomId == 0) RoomId = Id; // fallback
         }
-
-        if (json.HasKey("participantCount") && json["participantCount"].GetType() != Json::Type::Null) {
-            ParticipantCount = uint(json["participantCount"]);
-        }
-
-        if (json.HasKey("mediaUrlPngMedium") && string(json["mediaUrlPngMedium"]) != "") IconUrl = json["mediaUrlPngMedium"];
-        else if (json.HasKey("mediaUrl") && string(json["mediaUrl"]) != "") IconUrl = json["mediaUrl"];
-        else if (json.HasKey("iconUrl")) IconUrl = json["iconUrl"];
-        else IconUrl = "";
-
-        VerticalUrl = json.HasKey("mediaUrlPngLarge") ? string(json["mediaUrlPngLarge"]) : (json.HasKey("verticalUrl") ? string(json["verticalUrl"]) : "");
-        BackgroundUrl = json.HasKey("mediaUrl") ? string(json["mediaUrl"]) : (json.HasKey("backgroundUrl") ? string(json["backgroundUrl"]) : "");
     }
-
-    // Properties
-    string Headline;
-    string Body;
-    string Description;
-    bool NewsLoaded = false;
 }
 
 class TmxMap {
@@ -168,6 +180,7 @@ class TmxMap {
     string Name;
     string Author;
     uint LengthSecs;
+    int Difficulty; // 1-6
     string DifficultyName;
     uint AwardCount;
     uint RecordCount;
@@ -184,75 +197,47 @@ class TmxMap {
 
     TmxMap(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        // v2 API field names
-        TrackId = json.HasKey("MapId") ? int(json["MapId"]) : 0;
+        TrackId = JsonGetInt(json, "MapId");
         
-        // TMX API uses MapUid, but we handle variations for robustness
         if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
         else if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
-        else if (json.HasKey("MapUID")) Uid = string(json["MapUID"]);
         else if (json.HasKey("uid")) Uid = string(json["uid"]);
         else Uid = "";
-        Name = json.HasKey("Name") ? Text::StripFormatCodes(string(json["Name"])) : "Unknown Map";
 
-        // Uploader is a nested object in v2
+        Name = Text::StripFormatCodes(JsonGetString(json, "Name", "Unknown Map"));
+
         if (json.HasKey("Uploader") && json["Uploader"].GetType() == Json::Type::Object) {
-            Author = json["Uploader"].HasKey("Name") ? Text::StripFormatCodes(string(json["Uploader"]["Name"])) : "Unknown Author";
+            Author = JsonGetString(json["Uploader"], "Name", "Unknown Author");
+            Author = Text::StripFormatCodes(Author);
         } else {
-            Author = "Unknown Author";
+            Author = Text::StripFormatCodes(JsonGetString(json, "AuthorName", "Unknown Author"));
         }
 
-        // Length in v2 is milliseconds (same as AuthorTime in v1)
-        if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object && json["Medals"].HasKey("Author")) {
-            LengthSecs = uint(json["Medals"]["Author"]) / 1000;
-        } else if (json.HasKey("Length")) {
-            LengthSecs = uint(json["Length"]) / 1000;
-        } else {
-            LengthSecs = 0;
-        }
+        LengthSecs = JsonGetUint(json, "Length") / 1000;
+        Difficulty = JsonGetInt(json, "Difficulty");
+        DifficultyName = JsonGetString(json, "DifficultyName");
+        AwardCount = JsonGetUint(json, "AwardCount");
+        
+        ServerSizeExceeded = JsonGetBool(json, "ServerSizeExceeded");
+        EmbeddedItemsSize = JsonGetUint(json, "EmbeddedItemsSize");
+        DisplayCost = JsonGetUint(json, "DisplayCost");
 
-        // v2 Difficulty is an int enum: 0=Beginner,1=Intermediate,2=Advanced,3=Expert,4=Lunatic,5=Impossible
-        if (json.HasKey("Difficulty")) {
-            int diff = int(json["Difficulty"]);
-            if (diff >= 0 && diff < int(TMX::DIFFICULTY_NAMES.Length))
-                DifficultyName = TMX::DIFFICULTY_NAMES[diff];
-            else
-                DifficultyName = "Unknown";
-        } else {
-            DifficultyName = "Unknown";
-        }
-
-        AwardCount = json.HasKey("AwardCount") ? uint(json["AwardCount"]) : 0;
-        RecordCount = json.HasKey("ReplayCount") ? uint(json["ReplayCount"]) : (json.HasKey("RecordCount") ? uint(json["RecordCount"]) : 0);
-
-        SizeWarning = json.HasKey("SizeWarning") ? string(json["SizeWarning"]) : ""; // Keep just in case it exists too
-        ServerSizeExceeded = json.HasKey("ServerSizeExceeded") ? bool(json["ServerSizeExceeded"]) : false;
-        EmbeddedItemsSize = json.HasKey("EmbeddedItemsSize") ? uint(json["EmbeddedItemsSize"]) : 0;
-        DisplayCost = json.HasKey("DisplayCost") ? uint(json["DisplayCost"]) : 0;
-
-        if (json.HasKey("AuthorBeaten")) {
-            AtBeaten = bool(json["AuthorBeaten"]);
-        } else if (json.HasKey("AuthorTimeBeaten")) {
-            AtBeaten = bool(json["AuthorTimeBeaten"]);
-        } else {
+        if (json.HasKey("AuthorTime") || json.HasKey("Medals")) {
             uint at = 0;
             if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object) {
-                at = json["Medals"].HasKey("Author") ? uint(json["Medals"]["Author"]) : 0;
+                at = JsonGetUint(json["Medals"], "Author");
             } else if (json.HasKey("AuthorTime")) {
-                at = uint(json["AuthorTime"]);
+                at = JsonGetUint(json, "AuthorTime");
             }
 
             uint wr = 0;
             if (json.HasKey("ReplayWR") && json["ReplayWR"].GetType() == Json::Type::Object) {
-                wr = json["ReplayWR"].HasKey("RecordTime") ? uint(json["ReplayWR"]["RecordTime"]) : 0;
-            } else if (json.HasKey("ReplayWR.RecordTime")) {
-                wr = uint(json["ReplayWR.RecordTime"]);
+                wr = JsonGetUint(json["ReplayWR"], "RecordTime");
             }
 
             AtBeaten = (wr > 0 && wr < at);
         }
 
-        // v2 Tags is an array of objects with TagId and Name
         if (json.HasKey("Tags") && json["Tags"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["Tags"].Length; i++) {
                 auto t = json["Tags"][i];
@@ -261,8 +246,8 @@ class TmxMap {
             }
         }
 
-        UploadedAt = json.HasKey("UploadedAt") ? string(json["UploadedAt"]) : "";
-        HasScreenshot = json.HasKey("HasThumbnail") ? bool(json["HasThumbnail"]) : TrackId > 0;
+        UploadedAt = JsonGetString(json, "UploadedAt");
+        HasScreenshot = JsonGetBool(json, "HasThumbnail", TrackId > 0);
     }
 }
 
@@ -271,7 +256,10 @@ class TmxSearchFilters {
     int Vehicle = -1; // -1 = any
     string[] IncludeTags = {};
     string[] ExcludeTags = {};
-    int Difficulty = -1; // -1 = any
+    
+    // Multi-select difficulty
+    bool[] Difficulties = { false, false, false, false, false, false };
+    
     uint TimeFromMs = 0;
     uint TimeToMs = 0;
     int hFrom = 0, mFrom = 0, sFrom = 0;
@@ -283,9 +271,8 @@ class TmxSearchFilters {
     int InTOTD = -1;       // -1=any, 1=was TOTD, 0=was not TOTD
     int InOnlineRecords = -1; // -1=any, 1=has my record, 0=no record
     bool HideOversized = false;
-    uint Offset = 0;
     int CurrentPage = 1;
-    int[] PageStartingTrackIds = { 0 }; // TrackId to use with 'after' for each page. Page 1 starts at 0 (none).
+    int[] PageStartingTrackIds = { 0 }; 
     bool PrimaryTagOnly = false;
     bool PrimarySurfaceOnly = false;
     uint ResultLimit = 25;
@@ -294,22 +281,34 @@ class TmxSearchFilters {
 
     TmxSearchFilters(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        AuthorName = json.HasKey("AuthorName") ? string(json["AuthorName"]) : "";
-        Vehicle = json.HasKey("Vehicle") ? int(json["Vehicle"]) : -1;
-        Difficulty = json.HasKey("Difficulty") ? int(json["Difficulty"]) : -1;
-        TimeFromMs = json.HasKey("TimeFromMs") ? uint(json["TimeFromMs"]) : 0;
-        TimeToMs = json.HasKey("TimeToMs") ? uint(json["TimeToMs"]) : 0;
-        UploadedFrom = json.HasKey("UploadedFrom") ? string(json["UploadedFrom"]) : "";
-        UploadedTo = json.HasKey("UploadedTo") ? string(json["UploadedTo"]) : "";
-        SortPrimary = json.HasKey("SortPrimary") ? int(json["SortPrimary"]) : -1;
-        SortSecondary = json.HasKey("SortSecondary") ? int(json["SortSecondary"]) : -1;
-        InTOTD = json.HasKey("InTOTD") ? int(json["InTOTD"]) : -1;
-        InOnlineRecords = json.HasKey("InOnlineRecords") ? int(json["InOnlineRecords"]) : -1;
-        HideOversized = json.HasKey("HideOversized") ? bool(json["HideOversized"]) : false;
-        PrimaryTagOnly = json.HasKey("PrimaryTagOnly") ? bool(json["PrimaryTagOnly"]) : false;
-        PrimarySurfaceOnly = json.HasKey("PrimarySurfaceOnly") ? bool(json["PrimarySurfaceOnly"]) : false;
-        ResultLimit = json.HasKey("ResultLimit") ? uint(json["ResultLimit"]) : 25;
-        CurrentPage = json.HasKey("CurrentPage") ? int(json["CurrentPage"]) : 1;
+        AuthorName = JsonGetString(json, "AuthorName");
+        Vehicle = JsonGetInt(json, "Vehicle", -1);
+        
+        if (json.HasKey("Difficulties") && json["Difficulties"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["Difficulties"].Length && i < Difficulties.Length; i++)
+                Difficulties[i] = bool(json["Difficulties"][i]);
+        }
+
+        TimeFromMs = JsonGetUint(json, "TimeFromMs");
+        TimeToMs = JsonGetUint(json, "TimeToMs");
+        UploadedFrom = JsonGetString(json, "UploadedFrom");
+        UploadedTo = JsonGetString(json, "UploadedTo");
+        SortPrimary = JsonGetInt(json, "SortPrimary", -1);
+        SortSecondary = JsonGetInt(json, "SortSecondary", -1);
+        InTOTD = JsonGetInt(json, "InTOTD", -1);
+        InOnlineRecords = JsonGetInt(json, "InOnlineRecords", -1);
+        HideOversized = JsonGetBool(json, "HideOversized");
+        PrimaryTagOnly = JsonGetBool(json, "PrimaryTagOnly");
+        PrimarySurfaceOnly = JsonGetBool(json, "PrimarySurfaceOnly");
+        ResultLimit = JsonGetUint(json, "ResultLimit", 25);
+        CurrentPage = JsonGetInt(json, "CurrentPage", 1);
+
+        hFrom = (TimeFromMs / 3600000);
+        mFrom = (TimeFromMs % 3600000) / 60000;
+        sFrom = (TimeFromMs % 60000) / 1000;
+        hTo = (TimeToMs / 3600000);
+        mTo = (TimeToMs % 3600000) / 60000;
+        sTo = (TimeToMs % 60000) / 1000;
 
         if (json.HasKey("IncludeTags") && json["IncludeTags"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["IncludeTags"].Length; i++) IncludeTags.InsertLast(string(json["IncludeTags"][i]));
@@ -327,10 +326,16 @@ class TmxSearchFilters {
 
     Json::Value@ ToJson() {
         Json::Value@ json = Json::Object();
-        trace("  DEBUG [Models.as]: Filters.CurrentPage is " + CurrentPage);
         json["AuthorName"] = AuthorName;
         json["Vehicle"] = Vehicle;
-        json["Difficulty"] = Difficulty;
+        
+        Json::Value@ diffs = Json::Array();
+        for (uint i = 0; i < Difficulties.Length; i++) diffs.Add(Difficulties[i]);
+        json["Difficulties"] = diffs;
+
+        TimeFromMs = (hFrom * 3600000) + (mFrom * 60000) + (sFrom * 1000);
+        TimeToMs = (hTo * 3600000) + (mTo * 60000) + (sTo * 1000);
+        
         json["TimeFromMs"] = TimeFromMs;
         json["TimeToMs"] = TimeToMs;
         json["UploadedFrom"] = UploadedFrom;
@@ -344,7 +349,6 @@ class TmxSearchFilters {
         json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
         json["ResultLimit"] = ResultLimit;
         json["CurrentPage"] = CurrentPage;
-        // trace("TmxSearchFilters::ToJson - Page: " + CurrentPage);
         
         Json::Value@ inc = Json::Array();
         for (uint i = 0; i < IncludeTags.Length; i++) inc.Add(IncludeTags[i]);
@@ -370,17 +374,14 @@ class Subscription {
     uint LastRun = 0;
     string[] CurrentMapUids;
 
-    Subscription() {
-        @Filters = TmxSearchFilters();
-    }
-
+    Subscription() { @Filters = TmxSearchFilters(); }
     Subscription(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
-        ActivityId = json.HasKey("ActivityId") ? uint(json["ActivityId"]) : 0;
-        ActivityName = json.HasKey("ActivityName") ? string(json["ActivityName"]) : "";
+        ActivityId = JsonGetUint(json, "ActivityId");
+        ActivityName = JsonGetString(json, "ActivityName");
         @Filters = json.HasKey("Filters") ? TmxSearchFilters(json["Filters"]) : TmxSearchFilters();
-        MapLimit = json.HasKey("MapLimit") ? uint(json["MapLimit"]) : 25;
-        LastRun = json.HasKey("LastRun") ? uint(json["LastRun"]) : 0;
+        MapLimit = JsonGetUint(json, "MapLimit", 25);
+        LastRun = JsonGetUint(json, "LastRun");
         
         if (json.HasKey("CurrentMapUids") && json["CurrentMapUids"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["CurrentMapUids"].Length; i++) CurrentMapUids.InsertLast(string(json["CurrentMapUids"][i]));
@@ -404,7 +405,6 @@ class Subscription {
 }
 
 namespace TMX {
-    // Tag names and their real TMX IDs (from trackmania.exchange/api/tags/gettags)
     const string[] TAG_NAMES = {
         "Altered Nadeo", "Arena", "Backwards", "Bobsleigh", "Bugslide", "Bumper",
         "Clones", "Competitive", "Cruise Control", "DesertCar", "Dirt", "Educational",
@@ -420,7 +420,6 @@ namespace TMX {
         "Water", "Wood", "ZrT"
     };
 
-    // Corresponding real TMX tag IDs (index-matched to TAG_NAMES)
     const int[] TAG_IDS = {
         49, 40, 34, 44, 56, 20,
         69, 13, 62, 59, 15, 42,
@@ -436,7 +435,7 @@ namespace TMX {
         38, 51, 11
     };
 
-    const string[] SORT_OPTIONS = {
+    const string[] SORT_NAMES = {
         "Awards Most", "Awards Least", "Downloads Most", "Activity Newest",
         "Comments Most", "Comments Least", "Difficulty Easiest", "Difficulty Hardest",
         "Length Shortest", "Length Longest", "Name A-Z", "Name Z-A",
@@ -448,4 +447,25 @@ namespace TMX {
     const string[] SURFACE_TAGS = { "Bobsleigh", "Dirt", "Grass", "Ice", "Mixed", "Plastic", "Tech", "Water", "Wood" };
     const string[] VEHICLE_NAMES = { "CarSport", "CarSnow", "CarRally", "CarDesert" };
     const string[] DIFFICULTY_NAMES = { "Beginner", "Intermediate", "Advanced", "Expert", "Lunatic", "Impossible" };
+    const string[] DIFFICULTY_WITH_ANY = { "Any", "Beginner", "Intermediate", "Advanced", "Expert", "Lunatic", "Impossible" };
+}
+
+class LocalMap {
+    string Uid;
+    string Name;
+    string Filename;
+    bool IsPlayable;
+    bool IsValidated;
+
+    LocalMap() {}
+    LocalMap(CGameCtnChallengeInfo@ info) {
+        if (info is null) return;
+        Uid = info.MapUid;
+        Name = Text::StripFormatCodes(info.Name);
+        if (Name == "") Name = "Known Map";
+        Filename = info.FileName;
+        IsPlayable = info.IsPlayable;
+        // Treat "validated" as "playable/usable" as provided by Fids.
+        IsValidated = IsPlayable;
+    }
 }
