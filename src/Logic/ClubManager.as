@@ -374,7 +374,7 @@ void DoAuditSubscription(ref@ r) {
     
     Notify("Auditing subscription for " + a.Name + "...");
     
-    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
+    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, true);
     if (results.Length == 0) {
         Notify("Audit failed: No maps found on TMX.");
         a.IsAuditing = false;
@@ -422,7 +422,7 @@ void DoApplyAudit(ref@ r) {
     
     // We need to fetch the results again or store the newUid list
     // Re-calculating newUids from a fresh search to be sure
-    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
+    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, true);
     if (results.Length == 0) {
         Notify("Failed to apply audit: Could not re-fetch TMX data.");
         return;

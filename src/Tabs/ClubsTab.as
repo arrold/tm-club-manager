@@ -322,6 +322,37 @@ class ClubsTab : Tab {
         if (a.IsAuditing) {
             UI::Text("\\$888" + Icons::Spinner + " Auditing TMX...");
         } else if (a.AuditDone) {
+            // Display Filter Summary for context
+            if (UI::TreeNode("Subscription Filter Summary##" + a.Id)) {
+                if (sub.Filters.CurrentPage > 1) UI::TextDisabled("Page: " + sub.Filters.CurrentPage);
+                if (sub.Filters.AuthorName != "") UI::TextDisabled("Author: " + sub.Filters.AuthorName);
+                if (sub.Filters.Vehicle >= 0 && sub.Filters.Vehicle < int(TMX::VEHICLE_NAMES.Length)) 
+                    UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
+                
+                if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
+                    UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary] + (sub.Filters.SortSecondary >= 0 ? " -> " + TMX::SORT_NAMES[sub.Filters.SortSecondary] : ""));
+
+                if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
+                if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));
+                
+                string diffList = "";
+                for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
+                if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
+
+                if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "") 
+                    UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
+                
+                if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)
+                    UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
+
+                if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
+                if (sub.Filters.InOnlineRecords == 1) UI::TextDisabled("Flag: My Record Only");
+                if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
+                if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
+
+                UI::TreePop();
+            }
+
             bool hasChanges = a.AuditAdded.Length > 0 || a.AuditRemoved.Length > 0 || a.AuditOrderMismatch;
             
             if (!hasChanges) {

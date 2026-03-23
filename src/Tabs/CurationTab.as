@@ -157,22 +157,38 @@ class CurationTab : Tab {
 
         UI::Separator();
 
+        // --- Uploaded Date Range ---
+        UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
+        UI::PushItemWidth(120);
+        f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
+        f.UploadedTo = UI::InputText("To##up_t", f.UploadedTo);
+        UI::PopItemWidth();
+
+        UI::Separator();
+
         if (UI::Button(Icons::Search + " Search TMX")) {
+            f.PageStartingTrackIds.RemoveRange(0, f.PageStartingTrackIds.Length);
+            f.PageStartingTrackIds.InsertLast(0);
+            f.CurrentPage = 1;
+            startnew(DoTmxSearch);
+        }
+        UI::SameLine();
+        if (UI::Button(Icons::AngleLeft + " Prev")) {
+            if (f.CurrentPage > 1) {
+                f.CurrentPage--;
+                startnew(DoTmxSearch);
+            }
+        }
+        UI::SameLine();
+        UI::Text("Page " + f.CurrentPage);
+        UI::SameLine();
+        if (UI::Button("Next " + Icons::AngleRight)) {
+            f.CurrentPage++;
             startnew(DoTmxSearch);
         }
         UI::SameLine();
         if (UI::Button(Icons::Trash + " Clear")) {
             State::tmxFilters = TmxSearchFilters();
-        }
-        
-        UI::SameLine();
-        UI::SetCursorPosX(UI::GetWindowSize().x - 240);
-        if (UI::Button(Icons::FloppyO + " Save Search Subscription")) {
-            if (State::SelectedClub is null) {
-                UI::ShowNotification("Club Manager", "Please select a Club first!");
-            } else {
-                UI::OpenPopup("curation_save_sub_popup");
-            }
         }
     }
 
@@ -223,6 +239,21 @@ class CurationTab : Tab {
             }
         }
 
+        UI::SameLine();
+        if (UI::Button(Icons::FloppyO + " Save as Subscription")) {
+            if (State::TargetActivity is null) {
+                UI::ShowNotification("Club Manager", "Please select a Target Activity first!");
+            } else {
+                Subscription@ sub = Subscription();
+                sub.ActivityId = State::TargetActivity.Id;
+                sub.ActivityName = State::TargetActivity.Name;
+                @sub.Filters = TmxSearchFilters(State::tmxFilters.ToJson());
+                sub.MapLimit = State::tmxFilters.ResultLimit;
+                Subscriptions::Add(sub);
+                UI::ShowNotification("Success", "Search saved as subscription for " + State::TargetActivity.Name);
+            }
+        }
+
         UI::BeginChild("tmx_results_scroll");
         UI::Columns(7, "tmx_results_cols");
         UI::Text("Sel"); UI::NextColumn();
@@ -246,25 +277,5 @@ class CurationTab : Tab {
         }
         UI::Columns(1);
         UI::EndChild();
-        
-        // --- Save Subscription Popup logic ---
-        if (UI::BeginPopup("curation_save_sub_popup")) {
-            UI::Text("Bind this search to:");
-            UI::Separator();
-            for (uint i = 0; i < State::ClubActivities.Length; i++) {
-                auto a = State::ClubActivities[i];
-                if (UI::Selectable(a.Name, false)) {
-                    Subscription@ sub = Subscription();
-                    sub.ActivityId = a.Id;
-                    sub.ActivityName = a.Name;
-                    @sub.Filters = TmxSearchFilters(State::tmxFilters.ToJson());
-                    sub.MapLimit = State::tmxFilters.ResultLimit;
-                    Subscriptions::Add(sub);
-                    UI::ShowNotification("Success", "Search saved as subscription for " + a.Name);
-                    UI::CloseCurrentPopup();
-                }
-            }
-            UI::EndPopup();
-        }
     }
 }

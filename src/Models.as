@@ -283,6 +283,7 @@ class TmxSearchFilters {
     bool PrimaryTagOnly = false;
     bool PrimarySurfaceOnly = false;
     uint ResultLimit = 25;
+    uint remainingSkip = 0;
 
     TmxSearchFilters() {}
 

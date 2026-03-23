@@ -22,13 +22,21 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     TmxMap[] allMatches;
     TmxSearchFilters@ tempFilters = TmxSearchFilters(f.ToJson());
     int lastAnalysedId = 0;
+    bool usingAfterId = false;
+
     if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingTrackIds.Length)) {
         lastAnalysedId = f.PageStartingTrackIds[f.CurrentPage - 1];
+        usingAfterId = (lastAnalysedId > 0);
     }
+    
+    // Global skip count across all batches if we aren't using an 'after' ID
+    f.remainingSkip = (applyOffset && f.CurrentPage > 1 && !usingAfterId) ? (uint(f.CurrentPage - 1) * limit) : 0;
+    
     uint batches = 0;
     bool hasMore = true;
     
-    while (allMatches.Length < limit && hasMore && batches < 5) {
+    // Increased batch limit to 20 to handle large Top TOTD clubs (150+ maps)
+    while (allMatches.Length < limit && hasMore && batches < 20) {
         batches++;
         auto json = TMX::SearchMaps(tempFilters, 100);
         if (json is null) break;
@@ -37,17 +45,25 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
         if (results.GetType() != Json::Type::Array || results.Length == 0) break;
         
         int batchLastId = 0;
-        auto batch = FilterTmxResults(results, f, limit - allMatches.Length, applyOffset && (batches == 1), batchLastId);
+        auto batch = FilterTmxResults(results, f, limit - allMatches.Length, batchLastId);
+        
         if (batchLastId > 0) lastAnalysedId = batchLastId;
         for (uint i = 0; i < batch.Length; i++) allMatches.InsertLast(batch[i]);
         
         hasMore = json.HasKey("More") && bool(json["More"]);
         if (hasMore) {
             tempFilters.PageStartingTrackIds.InsertLast(lastAnalysedId);
-            tempFilters.CurrentPage++;
+            // Sync current page to the end of our current tracked IDs so the NEXT batch uses this cursor
+            tempFilters.CurrentPage = tempFilters.PageStartingTrackIds.Length;
+            
+            // Sync the progress back to the original filter so the NEXT page knows where to start
+            if (int(tempFilters.PageStartingTrackIds.Length) > int(f.PageStartingTrackIds.Length)) {
+                f.PageStartingTrackIds.InsertLast(lastAnalysedId);
+            }
         }
     }
     
+    // Final sync of the starting ID for the next page if not already there
     if (f.CurrentPage == int(f.PageStartingTrackIds.Length) && hasMore) {
         f.PageStartingTrackIds.InsertLast(lastAnalysedId);
     }
@@ -61,13 +77,13 @@ bool IsSurfaceTag(const string &in tag) {
     return false;
 }
 
-TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, bool applyOffset, int &out lastTrackId) {
+TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, int &out lastTrackId) {
     TmxMap[] filtered;
     lastTrackId = 0;
     if (results is null || results.GetType() != Json::Type::Array) return filtered;
     
-    uint skipCount = (applyOffset && f.CurrentPage > 1) ? (uint(f.CurrentPage - 1) * limit) : 0;
-    uint matchesFound = 0;
+    // uint skipCount = (applyOffset && f.CurrentPage > 1) ? (uint(f.CurrentPage - 1) * limit) : 0;
+    // matchesFound = 0;
 
     bool hasDiffFilter = false;
     for (uint j = 0; j < f.Difficulties.Length; j++) if (f.Difficulties[j]) { hasDiffFilter = true; break; }
@@ -101,8 +117,10 @@ TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit,
             if (m.ServerSizeExceeded || m.EmbeddedItemsSize > 4000000 || m.DisplayCost > 13000) continue;
         }
         
-        matchesFound++;
-        if (matchesFound <= skipCount) continue;
+        if (f.remainingSkip > 0) {
+            f.remainingSkip--;
+            continue;
+        }
         filtered.InsertLast(m);
         if (filtered.Length >= limit) break;
     }
