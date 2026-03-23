@@ -59,18 +59,11 @@ namespace API {
             warn("API POST Error: " + route + " Response: " + Json::Write(json));
             return null;
         }
-        if (json !is null && json.GetType() == Json::Type::Array && json.Length > 0) {
-            string first = string(json[0]);
-            if (first.Contains(":error-")) {
-                warn("API POST Error: " + route + " Response: " + Json::Write(json));
-                return null;
-            }
-        }
         if (json is null) {
             warn("API POST Error: " + route + " (null response)");
             return null;
         }
-        trace("API POST Success: " + route);
+        trace("API POST Success: " + route + " Response: " + Json::Write(json));
         return json;
     }
 
@@ -146,8 +139,6 @@ namespace API {
     }
 
     Json::Value@ SetCampaignMaps(uint clubId, uint campaignId, const string &in campaignName, string[]@ mapUids) {
-        auto current = GetCampaignMaps(clubId, campaignId);
-        
         Json::Value@ playlist = Json::Array();
         for (uint i = 0; i < mapUids.Length; i++) {
             Json::Value@ entry = Json::Object();
@@ -156,32 +147,20 @@ namespace API {
             playlist.Add(entry);
         }
 
-        Json::Value@ cats = null;
-        if (current !is null) {
-            if (current.HasKey("categories") && current["categories"].GetType() == Json::Type::Array) {
-                @cats = current["categories"];
-            } else if (current.HasKey("campaign") && current["campaign"].HasKey("categories") && current["campaign"]["categories"].GetType() == Json::Type::Array) {
-                @cats = current["campaign"]["categories"];
-            }
-        }
-
         Json::Value@ data = Json::Object();
         data["name"] = campaignName;
         data["playlist"] = playlist;
         data["published"] = true;
 
-        if (cats !is null && cats.Length > 0) {
-            Json::Value@ newCats = Json::Array();
-            for (uint i = 0; i < cats.Length; i++) {
-                Json::Value@ c = Json::Object();
-                c["name"] = cats[i]["name"];
-                c["position"] = cats[i]["position"];
-                c["length"] = (cats.Length == 1) ? int(mapUids.Length) : int(cats[i]["length"]);
-                newCats.Add(c);
-            }
-            data["categories"] = newCats;
-        }
+        Json::Value@ c = Json::Object();
+        c["name"] = campaignName;
+        c["position"] = 0;
+        c["length"] = int(mapUids.Length);
+        Json::Value@ newCats = Json::Array();
+        newCats.Add(c);
+        data["categories"] = newCats;
 
+        trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps.");
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
     }
 

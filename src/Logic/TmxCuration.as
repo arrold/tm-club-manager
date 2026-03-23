@@ -125,9 +125,9 @@ void DoBatchAdd() {
 void ApplyBatchToActivity(Activity@ a, string[]@ uids) {
     if (a is null || State::SelectedClub is null) return;
     if (a.Type == "campaign") {
-        API::SetCampaignMaps(State::SelectedClub.Id, a.Id, a.Name, uids);
+        API::SetCampaignMaps(State::SelectedClub.Id, a.CampaignId, a.Name, uids);
     } else if (a.Type == "room") {
-        API::SetRoomMaps(State::SelectedClub.Id, a.Id, uids);
+        API::SetRoomMaps(State::SelectedClub.Id, a.RoomId, uids);
     }
 }
 

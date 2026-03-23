@@ -41,4 +41,5 @@ namespace State {
     string nextActivityName = "New Folder";
     bool nextActivityActive = true;
     uint[] reorderIds;
+    uint64 lastActionTime = 0;
 }

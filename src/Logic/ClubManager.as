@@ -153,6 +153,8 @@ void LoadActivityMaps(ref@ r) {
         auto json = API::GetCampaignMaps(clubId, a.CampaignId);
         trace("GetCampaignMaps(" + a.CampaignId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
         if (json !is null) {
+            a.CampaignId = JsonGetUint(json, "campaignId", a.CampaignId);
+            a.Name = Text::StripFormatCodes(JsonGetString(json, "name", a.Name));
             // Check top level, then check inside "campaign" object
             Json::Value@ list = GetMapListFromJson(json);
             if (list is null && json.HasKey("campaign")) @list = GetMapListFromJson(json["campaign"]);
@@ -342,11 +344,121 @@ void DoUpdateBranding(ref@ r) {
 
 void DoAuditSubscription(ref@ r) {
     Activity@ a = cast<Activity>(r);
+    if (a is null || State::SelectedClub is null) return;
+    
+    auto sub = Subscriptions::GetByActivity(a.Id);
+    if (sub is null) return;
+    
+    a.IsAuditing = true;
+    Notify("Auditing subscription for " + a.Name + "...");
+    
+    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
+    if (results.Length == 0) {
+        Notify("Audit failed: No maps found on TMX.");
+        a.IsAuditing = false;
+        return;
+    }
+    
+    string[] newUids;
+    for (uint i = 0; i < results.Length; i++) newUids.InsertLast(results[i].Uid);
+    
+    // Check if change needed
+    bool changed = (newUids.Length != a.Maps.Length);
+    if (!changed) {
+        for (uint i = 0; i < newUids.Length; i++) {
+            if (newUids[i] != a.Maps[i].Uid) { changed = true; break; }
+        }
+    }
+    
+    if (changed) {
+        Notify("Updating " + a.Name + " with " + newUids.Length + " maps...");
+        ApplyBatchToActivity(a, newUids);
+        startnew(LoadActivityMaps, a);
+    } else {
+        Notify("Subscription for " + a.Name + " is already up to date.");
+    }
+    
+    a.IsAuditing = false;
+}
+
+class MapAction {
+    Activity@ Act;
+    uint Index;
+    int Delta;
+    MapAction(Activity@ a, uint i, int d = 0) { @Act = a; Index = i; Delta = d; }
+}
+
+void DoReorderMap(ref@ r) {
+    MapAction@ action = cast<MapAction>(r);
+    if (action is null || action.Act is null) return;
+    
+    int toIdx = int(action.Index) + action.Delta;
+    if (toIdx < 0 || toIdx >= int(action.Act.Maps.Length)) return;
+    
+    auto m = action.Act.Maps[action.Index];
+    action.Act.Maps.RemoveAt(action.Index);
+    action.Act.Maps.InsertAt(toIdx, m);
+    action.Act.HasMapChanges = true;
+}
+
+void DoSaveMapChanges(ref@ r) {
+    Activity@ a = cast<Activity>(r);
+    if (a is null || State::SelectedClub is null) return;
+    
+    trace("DoSaveMapChanges: committing changes for " + a.Name);
+    string[] uids;
+    for (uint i = 0; i < a.Maps.Length; i++) {
+        if (!a.Maps[i].PendingDelete) {
+            uids.InsertLast(a.Maps[i].Uid);
+        }
+    }
+    
+    ApplyBatchToActivity(a, uids);
+    a.HasMapChanges = false;
+    // Don't need to manually reset PendingDelete as LoadActivityMaps will refill from server
+    Notify("Changes saved to " + a.Name);
+    
+    startnew(LoadActivityMaps, a);
+}
+
+void DoDiscardMapChanges(ref@ r) {
+    Activity@ a = cast<Activity>(r);
     if (a is null) return;
+    a.HasMapChanges = false;
+    for (uint i = 0; i < a.Maps.Length; i++) a.Maps[i].PendingDelete = false;
+    startnew(LoadActivityMaps, a); // Full sync just in case
 }
 
 void DoReorderActivity() {
     if (State::reorderIds.Length < 2 || State::SelectedClub is null) return;
-    // ...
-    Notify("Reorder requested (stub).");
+    
+    uint clubId = State::SelectedClub.Id;
+    uint targetId = State::reorderIds[0];
+    uint swapWithId = State::reorderIds[1];
+    
+    // Find target activity to get its folder/current position
+    Activity@ target = null;
+    Activity@ swapWith = null;
+    for (uint i = 0; i < State::ClubActivities.Length; i++) {
+        if (State::ClubActivities[i].Id == targetId) @target = State::ClubActivities[i];
+        if (State::ClubActivities[i].Id == swapWithId) @swapWith = State::ClubActivities[i];
+    }
+    
+    if (target is null || swapWith is null) return;
+    
+    uint targetPos = target.Position;
+    uint swapPos = swapWith.Position;
+    
+    Json::Value@ s1 = Json::Object();
+    s1["position"] = int(swapPos);
+    API::EditClubActivity(clubId, targetId, s1);
+    
+    Json::Value@ s2 = Json::Object();
+    s2["position"] = int(targetPos);
+    API::EditClubActivity(clubId, swapWithId, s2);
+    
+    target.Position = swapPos;
+    swapWith.Position = targetPos;
+    
+    Notify("Activity reordered.");
 }

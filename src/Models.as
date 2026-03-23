@@ -82,6 +82,7 @@ class MapInfo {
     string Name;
     string Author;
     string AuthorWebServicesId;
+    bool PendingDelete = false;
 
     MapInfo() {}
     MapInfo(Json::Value@ json) {
@@ -123,6 +124,7 @@ class Activity {
     string RenameBuffer = "";
     bool PendingDelete = false;
     bool IsManagingMaps = false;
+    bool HasMapChanges = false;
 
     // News specific
     string Headline;

@@ -240,10 +240,66 @@ class ClubsTab : Tab {
             UI::TextDisabled("Loading content...");
         } else {
             if (a.Type == "campaign" || a.Type == "room") {
-                for (uint i = 0; i < a.Maps.Length; i++) {
-                    UI::Text(" " + (i + 1) + ". " + a.Maps[i].Name + " by " + a.Maps[i].Author);
+                if (UI::Button((a.IsManagingMaps ? Icons::Check : Icons::List) + " Manage Maps##" + a.Id)) a.IsManagingMaps = !a.IsManagingMaps;
+                
+                if (a.IsManagingMaps) {
+                    if (UI::BeginTable("ManageMapsTable_" + a.Id, 5, UI::TableFlags::Resizable | UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
+                        UI::TableSetupColumn("Pos", UI::TableColumnFlags::WidthFixed, 40);
+                        UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
+                        UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthFixed, 150);
+                        UI::TableSetupColumn("Del?", UI::TableColumnFlags::WidthFixed, 40);
+                        UI::TableSetupColumn("Order", UI::TableColumnFlags::WidthFixed, 100);
+                        UI::TableHeadersRow();
+
+                        for (uint i = 0; i < a.Maps.Length; i++) {
+                            auto m = a.Maps[i];
+                            UI::TableNextRow();
+                            
+                            if (m.PendingDelete) UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0.4f, 0.1f, 0.1f, 0.5f));
+
+                            UI::TableNextColumn(); UI::Text("" + (i + 1));
+                            UI::TableNextColumn(); UI::Text(m.Name);
+                            UI::TableNextColumn(); UI::Text(m.Author);
+                            UI::TableNextColumn();
+                            
+                            // Checkbox for deletion
+                            UI::PushID("del_chk_" + i);
+                            bool wasPending = m.PendingDelete;
+                            m.PendingDelete = UI::Checkbox("##del", m.PendingDelete);
+                            if (m.PendingDelete != wasPending) a.HasMapChanges = true;
+                            UI::PopID();
+                            
+                            UI::TableNextColumn();
+                            UI::PushID("map_order_" + i);
+                            bool canClick = Time::Now > State::lastActionTime + 300;
+                            UI::BeginDisabled(!canClick || i == 0);
+                            if (UI::Button(Icons::ArrowUp + "##up")) { startnew(DoReorderMap, MapAction(a, i, -1)); State::lastActionTime = Time::Now; }
+                            UI::EndDisabled();
+                            UI::SameLine();
+                            UI::BeginDisabled(!canClick || i == a.Maps.Length - 1);
+                            if (UI::Button(Icons::ArrowDown + "##down")) { startnew(DoReorderMap, MapAction(a, i, 1)); State::lastActionTime = Time::Now; }
+                            UI::EndDisabled();
+                            UI::PopID();
+                        }
+                        UI::EndTable();
+                    }
+                    
+                    if (a.HasMapChanges) {
+                        UI::PushStyleColor(UI::Col::Button, vec4(0.1f, 0.6f, 0.1f, 0.8f));
+                        if (UI::Button(Icons::FloppyO + " Save Changes##" + a.Id)) startnew(DoSaveMapChanges, a);
+                        UI::PopStyleColor();
+                        UI::SameLine();
+                        if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardMapChanges, a);
+                        UI::SameLine();
+                        UI::TextDisabled("(Unsaved Changes)");
+                    }
+                } else {
+                    for (uint i = 0; i < a.Maps.Length; i++) {
+                        UI::Text(" " + (i + 1) + ". " + a.Maps[i].Name + " by " + a.Maps[i].Author);
+                    }
                 }
-            } else if (a.Type == "news") {
+            }
+ else if (a.Type == "news") {
                 a.Headline = UI::InputText("Headline", a.Headline);
                 a.Body = UI::InputTextMultiline("Body", a.Body, vec2(0, 150));
                 if (UI::Button(Icons::FloppyO + " Save News")) startnew(DoSaveNews, a);

@@ -12,13 +12,13 @@ namespace Gbx {
 
     // Treat possibly signed string bytes as uint8 (0..255).
     uint u8At(const string &in s, uint i) {
-        if (i >= s.Length) return 0;
+        if (int(i) >= s.Length) return 0;
         int v = s[i];
         return (v < 0) ? uint(v + 256) : uint(v);
     }
 
     uint u32At(const string &in s, uint i) {
-        if (i + 3 >= s.Length) return 0;
+        if (int(i + 3) >= s.Length) return 0;
         return u8At(s, i) | (u8At(s, i + 1) << 8) | (u8At(s, i + 2) << 16) | (u8At(s, i + 3) << 24);
     }
 
