@@ -367,6 +367,11 @@ void DoAuditSubscription(ref@ r) {
     if (sub is null) return;
     
     a.IsAuditing = true;
+    a.AuditDone = false;
+    a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
+    a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
+    a.AuditOrderMismatch = false;
+    
     Notify("Auditing subscription for " + a.Name + "...");
     
     auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
@@ -376,26 +381,74 @@ void DoAuditSubscription(ref@ r) {
         return;
     }
     
-    string[] newUids;
-    for (uint i = 0; i < results.Length; i++) newUids.InsertLast(results[i].Uid);
+    // Calculate Diff
+    for (uint i = 0; i < results.Length; i++) {
+        bool found = false;
+        for (uint j = 0; j < a.Maps.Length; j++) {
+            if (a.Maps[j].Uid == results[i].Uid) { found = true; break; }
+        }
+        if (!found) a.AuditAdded.InsertLast(results[i]);
+    }
     
-    // Check if change needed
-    bool changed = (newUids.Length != a.Maps.Length);
-    if (!changed) {
-        for (uint i = 0; i < newUids.Length; i++) {
-            if (newUids[i] != a.Maps[i].Uid) { changed = true; break; }
+    for (uint i = 0; i < a.Maps.Length; i++) {
+        bool found = false;
+        for (uint j = 0; j < results.Length; j++) {
+            if (results[j].Uid == a.Maps[i].Uid) { found = true; break; }
+        }
+        if (!found) a.AuditRemoved.InsertLast(a.Maps[i]);
+    }
+
+    // Check Order Mismatch (only if map sets are identical)
+    if (results.Length == a.Maps.Length && a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0) {
+        for (uint i = 0; i < results.Length; i++) {
+            if (results[i].Uid != a.Maps[i].Uid) {
+                a.AuditOrderMismatch = true;
+                break;
+            }
         }
     }
     
-    if (changed) {
-        Notify("Updating " + a.Name + " with " + newUids.Length + " maps...");
-        ApplyBatchToActivity(a, newUids);
-        startnew(LoadActivityMaps, a);
-    } else {
-        Notify("Subscription for " + a.Name + " is already up to date.");
+    a.AuditDone = true;
+    a.IsAuditing = false;
+    Notify("Audit complete for " + a.Name + ". Review the proposed changes.");
+}
+
+void DoApplyAudit(ref@ r) {
+    Activity@ a = cast<Activity>(r);
+    if (a is null || State::SelectedClub is null) return;
+    
+    auto sub = Subscriptions::GetByActivity(a.Id);
+    if (sub is null) return;
+    
+    // We need to fetch the results again or store the newUid list
+    // Re-calculating newUids from a fresh search to be sure
+    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
+    if (results.Length == 0) {
+        Notify("Failed to apply audit: Could not re-fetch TMX data.");
+        return;
     }
     
-    a.IsAuditing = false;
+    string[] newUids;
+    for (uint i = 0; i < results.Length; i++) {
+        if (!Nadeo::IsMapUploaded(results[i].Uid)) {
+            Nadeo::RegisterMap(results[i].Uid);
+            yield();
+        }
+        newUids.InsertLast(results[i].Uid);
+    }
+    
+    Notify("Applying audit changes to " + a.Name + "...");
+    ApplyBatchToActivity(a, newUids);
+    a.AuditDone = false;
+    startnew(LoadActivityMaps, a);
+}
+
+void DoDiscardAudit(ref@ r) {
+    Activity@ a = cast<Activity>(r);
+    if (a is null) return;
+    a.AuditDone = false;
+    a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
+    a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
 }
 
 class MapAction {

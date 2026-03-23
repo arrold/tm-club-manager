@@ -312,13 +312,67 @@ class ClubsTab : Tab {
         }
     }
 
+    bool showAuditDetails = false;
     void RenderAuditSubscription(Activity@ a) {
         auto sub = Subscriptions::GetByActivity(a.Id);
         if (sub is null) return;
         UI::Separator();
         UI::Text("\\$f80" + Icons::MapMarker + "\\$z Subscription Curation Audit");
-        if (a.IsAuditing) UI::Text("\\$888Auditing...");
-        else if (UI::Button(Icons::Search + " Audit Now")) startnew(DoAuditSubscription, a);
+        
+        if (a.IsAuditing) {
+            UI::Text("\\$888" + Icons::Spinner + " Auditing TMX...");
+        } else if (a.AuditDone) {
+            bool hasChanges = a.AuditAdded.Length > 0 || a.AuditRemoved.Length > 0 || a.AuditOrderMismatch;
+            
+            if (!hasChanges) {
+                UI::Text("\\$8f8" + Icons::Check + " Subscription is up to date.");
+                if (UI::Button("Close##audit_" + a.Id)) a.AuditDone = false;
+            } else {
+                string summary = "";
+                if (a.AuditAdded.Length > 0) summary += "\\$0f0+" + a.AuditAdded.Length + " ";
+                if (a.AuditRemoved.Length > 0) summary += "\\$f00-" + a.AuditRemoved.Length + " ";
+                if (a.AuditOrderMismatch) summary += "\\$ff0(Reorder)";
+                
+                UI::Text("Proposed changes: " + summary);
+                
+                if (UI::Button(Icons::List + " Review Details##" + a.Id)) showAuditDetails = !showAuditDetails;
+                UI::SameLine();
+                UI::PushStyleColor(UI::Col::Button, vec4(0.1f, 0.6f, 0.1f, 0.8f));
+                if (UI::Button(Icons::Check + " Apply Audit##" + a.Id)) startnew(DoApplyAudit, a);
+                UI::PopStyleColor();
+                UI::SameLine();
+                if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardAudit, a);
+
+                if (showAuditDetails) {
+                    if (UI::BeginTable("AuditDetails_" + a.Id, 2, UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
+                        UI::TableSetupColumn("Action", UI::TableColumnFlags::WidthFixed, 60);
+                        UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
+                        UI::TableHeadersRow();
+
+                        for (uint i = 0; i < a.AuditAdded.Length; i++) {
+                            UI::TableNextRow();
+                            UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0, 0.4f, 0, 0.3f));
+                            UI::TableNextColumn(); UI::Text("\\$0f0" + Icons::PlusCircle + " ADD");
+                            UI::TableNextColumn(); UI::Text(a.AuditAdded[i].Name);
+                        }
+                        for (uint i = 0; i < a.AuditRemoved.Length; i++) {
+                            UI::TableNextRow();
+                            UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0.4f, 0, 0, 0.3f));
+                            UI::TableNextColumn(); UI::Text("\\$f00" + Icons::MinusCircle + " REM");
+                            UI::TableNextColumn(); UI::Text(a.AuditRemoved[i].Name);
+                        }
+                        if (a.AuditOrderMismatch && a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0) {
+                            UI::TableNextRow();
+                            UI::TableNextColumn(); UI::Text("\\$ff0" + Icons::Refresh);
+                            UI::TableNextColumn(); UI::Text("Maps will be reordered to match TMX subscription.");
+                        }
+                        UI::EndTable();
+                    }
+                }
+            }
+        } else {
+            if (UI::Button(Icons::Search + " Audit Now")) startnew(DoAuditSubscription, a);
+        }
     }
 
     Activity@[] GetSortedSiblings(uint folderId, Activity[]@ items) {
