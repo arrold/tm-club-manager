@@ -383,16 +383,15 @@ namespace API {
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CReplayWR.RecordTime%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
 
     Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         int afterId = 0;
-        if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingIds.Length)) {
-            afterId = f.PageStartingIds[f.CurrentPage - 1];
+        if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingTrackIds.Length)) {
+            afterId = f.PageStartingTrackIds[f.CurrentPage - 1];
         }
-        if (afterId > 0) params += "&after=" + tostring(afterId);
-        // else if (f.Offset > 0) params += "&offset=" + tostring(f.Offset);
+        if (afterId > 0) params += "&after=" + afterId;
 
         if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
 
@@ -440,9 +439,9 @@ namespace API {
     Json::Value@ SearchMapsForAudit(TmxSearchFilters@ f, uint limit = 25) {
         TmxSearchFilters@ clone = TmxSearchFilters(f.ToJson());
         
-        bool canJump = f.PageStartingIds.Length >= f.CurrentPage;
+        bool canJump = uint(f.PageStartingTrackIds.Length) >= uint(f.CurrentPage);
         if (canJump) {
-            trace("SearchMapsForAudit: Jumping to Page=" + f.CurrentPage + " using TrackId=" + f.PageStartingIds[f.CurrentPage - 1]);
+            trace("SearchMapsForAudit: Jumping to Page=" + f.CurrentPage + " using TrackId=" + f.PageStartingTrackIds[f.CurrentPage - 1]);
             return SearchMaps(clone, limit); 
         } else {
             uint totalLimit = limit * uint(Math::Max(1, f.CurrentPage));
@@ -450,7 +449,7 @@ namespace API {
             if (totalLimit > 100) totalLimit = 100; 
             trace("SearchMapsForAudit: Fetching from start. Page=" + f.CurrentPage + " limit=" + limit + " totalLimit=" + totalLimit);
             clone.CurrentPage = 1;
-            clone.PageStartingIds = { 0 };
+            clone.PageStartingTrackIds = { 0 };
             return SearchMaps(clone, totalLimit);
         }
     }

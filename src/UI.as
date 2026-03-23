@@ -285,6 +285,7 @@ namespace UI {
             if (!a.Active) label = "\\$f44" + Icons::ExclamationCircle + " " + label;
             if (!a.Public) label += " \\$888" + Icons::Lock;
             if (a.Featured) label += " \\$fd0" + Icons::Star;
+            if (Subscriptions::GetByActivity(a.Id) !is null) label += " \\$f80" + Icons::Rss;
 
             nodeOpen = UI::TreeNode(label + "##node");
             
@@ -1044,6 +1045,10 @@ namespace UI {
         UI::Separator();
         tmxFilters.PrimaryTagOnly = UI::Checkbox("Primary Tag Only", tmxFilters.PrimaryTagOnly);
         UI::SameLine();
+        tmxFilters.PrimarySurfaceOnly = UI::Checkbox("Primary Surface Only", tmxFilters.PrimarySurfaceOnly);
+        if (tmxFilters.PrimarySurfaceOnly) tmxFilters.PrimaryTagOnly = false;
+        if (tmxFilters.PrimaryTagOnly) tmxFilters.PrimarySurfaceOnly = false;
+        UI::SameLine();
         tmxFilters.HideOversized = UI::Checkbox("Hide Over-sized Maps", tmxFilters.HideOversized);
         UI::EndChild();
 
@@ -1055,8 +1060,8 @@ namespace UI {
         UI::SameLine();
         if (UI::Button("Find Maps on TMX") && !searchInProgress) {
             tmxFilters.CurrentPage = 1;
-            tmxFilters.PageStartingIds.RemoveRange(0, tmxFilters.PageStartingIds.Length);
-            tmxFilters.PageStartingIds.InsertLast(0);
+            tmxFilters.PageStartingTrackIds.RemoveRange(0, tmxFilters.PageStartingTrackIds.Length);
+            tmxFilters.PageStartingTrackIds.InsertLast(0);
             startnew(SearchTMX);
         }
         UI::SameLine();
@@ -1067,7 +1072,7 @@ namespace UI {
         UI::SameLine();
         UI::Text("Page " + tmxFilters.CurrentPage);
         UI::SameLine();
-        bool canGoNext = tmxFilters.CurrentPage < int(tmxFilters.PageStartingIds.Length);
+        bool canGoNext = tmxFilters.CurrentPage < int(tmxFilters.PageStartingTrackIds.Length);
         if (UI::Button("Next Page " + Icons::AngleRight) && !searchInProgress && canGoNext) {
             tmxFilters.CurrentPage++;
             startnew(SearchTMX);
@@ -1167,7 +1172,11 @@ namespace UI {
                     UI::TableNextRow();
                     
                     UI::TableNextColumn();
-                    tmxSelected[i] = UI::Checkbox("##sel" + i, tmxSelected[i]);
+                    if (i < tmxSelected.Length) {
+                        tmxSelected[i] = UI::Checkbox("##sel" + i, tmxSelected[i]);
+                    } else {
+                        UI::TextDisabled("...");
+                    }
 
                     UI::TableNextColumn();
                     if (m.HasScreenshot) UI::Text(Icons::PictureO); else UI::Text("");
@@ -1342,6 +1351,10 @@ namespace UI {
     TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
         TmxMap[] allMatches;
         TmxSearchFilters@ tempFilters = TmxSearchFilters(f.ToJson());
+        int lastAnalysedId = 0;
+        if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingTrackIds.Length)) {
+            lastAnalysedId = f.PageStartingTrackIds[f.CurrentPage - 1];
+        }
         uint batches = 0;
         bool hasMore = true;
         
@@ -1354,22 +1367,33 @@ namespace UI {
             if (results.GetType() != Json::Type::Array || results.Length == 0) break;
             
             // Only apply offset on the first batch, and only if requested (audits do, UI doesn't)
-            auto batch = FilterTmxResults(results, f, limit - allMatches.Length, applyOffset && (batches == 1));
+            int batchLastId = 0;
+            auto batch = FilterTmxResults(results, f, limit - allMatches.Length, applyOffset && (batches == 1), batchLastId);
+            if (batchLastId > 0) lastAnalysedId = batchLastId;
             for (uint i = 0; i < batch.Length; i++) allMatches.InsertLast(batch[i]);
             
             hasMore = json.HasKey("More") && bool(json["More"]);
             if (!hasMore) break;
             
             // Advance cursor for next batch
-            int lastId = int(results[results.Length - 1]["MapId"]);
-            tempFilters.PageStartingIds.InsertLast(lastId);
+            tempFilters.PageStartingTrackIds.InsertLast(lastAnalysedId);
             tempFilters.CurrentPage++;
-            
-            // If we are performing a UI search (applyOffset=false) and we are the original filters,
-            // we might want to update the cursors for the 'Next Page' button.
-            // But we'll handle that in SearchTMX specifically.
+        }
+        
+        // Save the TrackId for the next page in the original filters object
+        if (f.CurrentPage == int(f.PageStartingTrackIds.Length)) {
+            if (hasMore) {
+                f.PageStartingTrackIds.InsertLast(lastAnalysedId);
+            }
         }
         return allMatches;
+    }
+
+    bool IsSurfaceTag(const string &in tag) {
+        for (uint i = 0; i < TMX::SURFACE_TAGS.Length; i++) {
+            if (TMX::SURFACE_TAGS[i] == tag) return true;
+        }
+        return false;
     }
 
     void SearchTMX() {
@@ -1380,6 +1404,10 @@ namespace UI {
         
         // We want to update the cursors as we go, so we use a temp internal loop
         TmxSearchFilters@ tempFilters = TmxSearchFilters(tmxFilters.ToJson());
+        int lastAnalysedId = 0;
+        if (tmxFilters.CurrentPage > 1 && tmxFilters.CurrentPage <= int(tmxFilters.PageStartingTrackIds.Length)) {
+            lastAnalysedId = tmxFilters.PageStartingTrackIds[tmxFilters.CurrentPage - 1];
+        }
         uint batches = 0;
         bool hasMore = true;
         
@@ -1391,25 +1419,23 @@ namespace UI {
             Json::Value@ results = (json.HasKey("Results")) ? json["Results"] : json;
             if (results.GetType() != Json::Type::Array || results.Length == 0) break;
             
-            auto batch = FilterTmxResults(results, tmxFilters, tmxFilters.ResultLimit - tmxSearchResults.Length, false);
+            int batchLastId = 0;
+            auto batch = FilterTmxResults(results, tmxFilters, tmxFilters.ResultLimit - tmxSearchResults.Length, false, batchLastId);
+            if (batchLastId > 0) lastAnalysedId = batchLastId;
             for (uint i = 0; i < batch.Length; i++) tmxSearchResults.InsertLast(batch[i]);
             
             hasMore = json.HasKey("More") && bool(json["More"]);
-            int lastTrackId = int(results[results.Length - 1]["MapId"]);
-            
-            if (tmxSearchResults.Length < tmxFilters.ResultLimit && hasMore) {
-                tempFilters.PageStartingIds.InsertLast(lastTrackId);
-                tempFilters.CurrentPage++;
-                if (int(tmxFilters.PageStartingIds.Length) == tmxFilters.CurrentPage) {
-                    tmxFilters.PageStartingIds.InsertLast(lastTrackId);
-                }
-            } else if (hasMore) {
-                if (int(tmxFilters.PageStartingIds.Length) == tmxFilters.CurrentPage) {
-                    tmxFilters.PageStartingIds.InsertLast(lastTrackId);
-                }
-                break;
+            // Advance cursor for next batch
+            tempFilters.PageStartingTrackIds.InsertLast(lastAnalysedId);
+            tempFilters.CurrentPage++;
+        }
+        
+        if (hasMore) {
+            // The TrackId for the NEXT page should always be updated to our last analysed ID
+            if (int(tmxFilters.PageStartingTrackIds.Length) <= tmxFilters.CurrentPage) {
+                tmxFilters.PageStartingTrackIds.InsertLast(lastAnalysedId);
             } else {
-                break;
+                tmxFilters.PageStartingTrackIds[tmxFilters.CurrentPage] = lastAnalysedId;
             }
         }
 
@@ -1421,7 +1447,7 @@ namespace UI {
         searchInProgress = false;
     }
 
-    TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
+    TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, bool applyOffset, int &out lastTrackId) {
         TmxMap[] filtered;
         if (results is null || results.GetType() != Json::Type::Array) return filtered;
         
@@ -1429,12 +1455,26 @@ namespace UI {
         uint matchesFound = 0;
         trace("FilterTmxResults: Page=" + f.CurrentPage + " limit=" + limit + " skipCount=" + skipCount + " applyOffset=" + applyOffset + " results=" + results.Length);
 
+        lastTrackId = 0;
         for (uint i = 0; i < results.Length; i++) {
+            lastTrackId = int(results[i]["MapId"]);
             TmxMap m(results[i]);
             // Filter by primary tag if enabled
             if (f.PrimaryTagOnly && f.IncludeTags.Length > 0) {
                 string searchTag = f.IncludeTags[0];
                 if (m.Tags.Length == 0 || m.Tags[0] != searchTag) continue;
+            }
+
+            if (f.PrimarySurfaceOnly && f.IncludeTags.Length > 0) {
+                string searchTag = f.IncludeTags[0];
+                string firstSurface = "";
+                for (uint j = 0; j < m.Tags.Length; j++) {
+                    if (IsSurfaceTag(m.Tags[j])) {
+                        firstSurface = m.Tags[j];
+                        break;
+                    }
+                }
+                if (firstSurface != searchTag) continue;
             }
             // Filter by size/cost if enabled
             if (f.HideOversized) {
@@ -1921,6 +1961,7 @@ namespace UI {
         a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
         
         trace("Auditing subscription for " + a.Name + " (Limit: " + sub.MapLimit + ")");
+        trace("  Filters: From=" + sub.Filters.UploadedFrom + ", To=" + sub.Filters.UploadedTo + ", PrimaryTagOnly=" + sub.Filters.PrimaryTagOnly);
         
         // Force always reloading maps for a fresh audit
         a.MapsLoaded = false;
@@ -1931,7 +1972,7 @@ namespace UI {
         while (a.LoadingMaps) yield();
         
         uint fetchLimit = sub.Filters.PrimaryTagOnly ? 100 : sub.MapLimit;
-        bool applyOffset = sub.Filters.PageStartingIds.Length < sub.Filters.CurrentPage;
+        bool applyOffset = uint(sub.Filters.PageStartingTrackIds.Length) < uint(sub.Filters.CurrentPage);
         auto tmxMaps = FetchMapsSequential(sub.Filters, sub.MapLimit, applyOffset);
         if (tmxMaps.Length > 0) {
             
@@ -2012,10 +2053,11 @@ namespace UI {
         if (sub is null) return;
 
         trace("Applying audit for: " + a.Name);
+        trace("  Filters: From=" + sub.Filters.UploadedFrom + ", To=" + sub.Filters.UploadedTo);
 
         // Perform audit again to get the latest TMX UIDs in the right scope
         uint fetchLimit = sub.Filters.PrimaryTagOnly ? 100 : sub.MapLimit;
-        bool applyOffset = sub.Filters.PageStartingIds.Length < sub.Filters.CurrentPage;
+        bool applyOffset = uint(sub.Filters.PageStartingTrackIds.Length) < uint(sub.Filters.CurrentPage);
         auto tmxMaps = FetchMapsSequential(sub.Filters, sub.MapLimit, applyOffset);
         
         if (tmxMaps.Length == 0) {
@@ -2089,6 +2131,7 @@ namespace UI {
             Notify("Failed to save room settings.");
         }
     }
+
 }
 
  

@@ -77,6 +77,9 @@ class Activity {
     bool Scalable = true;
     string Region = "";
     string Password = "";
+    string IconUrl = "";
+    string VerticalUrl = "";
+    string BackgroundUrl = "";
     MapInfo[] Maps;
     bool MapsLoaded = false;
     bool LoadingMaps = false;
@@ -142,6 +145,14 @@ class Activity {
         if (json.HasKey("participantCount") && json["participantCount"].GetType() != Json::Type::Null) {
             ParticipantCount = uint(json["participantCount"]);
         }
+
+        if (json.HasKey("mediaUrlPngMedium") && string(json["mediaUrlPngMedium"]) != "") IconUrl = json["mediaUrlPngMedium"];
+        else if (json.HasKey("mediaUrl") && string(json["mediaUrl"]) != "") IconUrl = json["mediaUrl"];
+        else if (json.HasKey("iconUrl")) IconUrl = json["iconUrl"];
+        else IconUrl = "";
+
+        VerticalUrl = json.HasKey("mediaUrlPngLarge") ? string(json["mediaUrlPngLarge"]) : (json.HasKey("verticalUrl") ? string(json["verticalUrl"]) : "");
+        BackgroundUrl = json.HasKey("mediaUrl") ? string(json["mediaUrl"]) : (json.HasKey("backgroundUrl") ? string(json["backgroundUrl"]) : "");
     }
 
     // Properties
@@ -219,10 +230,25 @@ class TmxMap {
         EmbeddedItemsSize = json.HasKey("EmbeddedItemsSize") ? uint(json["EmbeddedItemsSize"]) : 0;
         DisplayCost = json.HasKey("DisplayCost") ? uint(json["DisplayCost"]) : 0;
 
-        if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object) {
-            auto m = json["Medals"];
-            uint at = m.HasKey("Author") ? uint(m["Author"]) : 0;
-            uint wr = m.HasKey("WrTime") ? uint(m["WrTime"]) : 0;
+        if (json.HasKey("AuthorBeaten")) {
+            AtBeaten = bool(json["AuthorBeaten"]);
+        } else if (json.HasKey("AuthorTimeBeaten")) {
+            AtBeaten = bool(json["AuthorTimeBeaten"]);
+        } else {
+            uint at = 0;
+            if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object) {
+                at = json["Medals"].HasKey("Author") ? uint(json["Medals"]["Author"]) : 0;
+            } else if (json.HasKey("AuthorTime")) {
+                at = uint(json["AuthorTime"]);
+            }
+
+            uint wr = 0;
+            if (json.HasKey("ReplayWR") && json["ReplayWR"].GetType() == Json::Type::Object) {
+                wr = json["ReplayWR"].HasKey("RecordTime") ? uint(json["ReplayWR"]["RecordTime"]) : 0;
+            } else if (json.HasKey("ReplayWR.RecordTime")) {
+                wr = uint(json["ReplayWR.RecordTime"]);
+            }
+
             AtBeaten = (wr > 0 && wr < at);
         }
 
@@ -259,8 +285,9 @@ class TmxSearchFilters {
     bool HideOversized = false;
     uint Offset = 0;
     int CurrentPage = 1;
-    int[] PageStartingIds = { 0 }; // TrackId to use with 'after' for each page. Page 1 starts at 0 (none).
+    int[] PageStartingTrackIds = { 0 }; // TrackId to use with 'after' for each page. Page 1 starts at 0 (none).
     bool PrimaryTagOnly = false;
+    bool PrimarySurfaceOnly = false;
     uint ResultLimit = 25;
 
     TmxSearchFilters() {}
@@ -280,6 +307,7 @@ class TmxSearchFilters {
         InOnlineRecords = json.HasKey("InOnlineRecords") ? int(json["InOnlineRecords"]) : -1;
         HideOversized = json.HasKey("HideOversized") ? bool(json["HideOversized"]) : false;
         PrimaryTagOnly = json.HasKey("PrimaryTagOnly") ? bool(json["PrimaryTagOnly"]) : false;
+        PrimarySurfaceOnly = json.HasKey("PrimarySurfaceOnly") ? bool(json["PrimarySurfaceOnly"]) : false;
         ResultLimit = json.HasKey("ResultLimit") ? uint(json["ResultLimit"]) : 25;
         CurrentPage = json.HasKey("CurrentPage") ? int(json["CurrentPage"]) : 1;
 
@@ -289,9 +317,11 @@ class TmxSearchFilters {
         if (json.HasKey("ExcludeTags") && json["ExcludeTags"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["ExcludeTags"].Length; i++) ExcludeTags.InsertLast(string(json["ExcludeTags"][i]));
         }
-        if (json.HasKey("PageStartingIds") && json["PageStartingIds"].GetType() == Json::Type::Array) {
-            PageStartingIds.RemoveRange(0, PageStartingIds.Length);
-            for (uint i = 0; i < json["PageStartingIds"].Length; i++) PageStartingIds.InsertLast(int(json["PageStartingIds"][i]));
+        if (json.HasKey("PageStartingTrackIds") && json["PageStartingTrackIds"].GetType() == Json::Type::Array) {
+            PageStartingTrackIds.RemoveRange(0, PageStartingTrackIds.Length);
+            for (uint i = 0; i < json["PageStartingTrackIds"].Length; i++) PageStartingTrackIds.InsertLast(int(json["PageStartingTrackIds"][i]));
+        } else {
+            PageStartingTrackIds.InsertLast(0);
         }
     }
 
@@ -311,6 +341,7 @@ class TmxSearchFilters {
         json["InOnlineRecords"] = InOnlineRecords;
         json["HideOversized"] = HideOversized;
         json["PrimaryTagOnly"] = PrimaryTagOnly;
+        json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
         json["ResultLimit"] = ResultLimit;
         json["CurrentPage"] = CurrentPage;
         // trace("TmxSearchFilters::ToJson - Page: " + CurrentPage);
@@ -323,9 +354,9 @@ class TmxSearchFilters {
         for (uint i = 0; i < ExcludeTags.Length; i++) exc.Add(ExcludeTags[i]);
         json["ExcludeTags"] = exc;
         
-        Json::Value@ pids = Json::Array();
-        for (uint i = 0; i < PageStartingIds.Length; i++) pids.Add(PageStartingIds[i]);
-        json["PageStartingIds"] = pids;
+        Json::Value@ ptid = Json::Array();
+        for (uint i = 0; i < PageStartingTrackIds.Length; i++) ptid.Add(PageStartingTrackIds[i]);
+        json["PageStartingTrackIds"] = ptid;
         
         return json;
     }
@@ -414,6 +445,7 @@ namespace TMX {
         "Awards This Week", "Awards This Month"
     };
 
+    const string[] SURFACE_TAGS = { "Bobsleigh", "Dirt", "Grass", "Ice", "Mixed", "Plastic", "Tech", "Water", "Wood" };
     const string[] VEHICLE_NAMES = { "CarSport", "CarSnow", "CarRally", "CarDesert" };
     const string[] DIFFICULTY_NAMES = { "Beginner", "Intermediate", "Advanced", "Expert", "Lunatic", "Impossible" };
 }
