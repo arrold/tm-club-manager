@@ -67,18 +67,31 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
             if (anyDiffSet && !diffPassed) continue;
         }
 
-        // Primary Tag/Surface Only (TMX might return tags as hints, we enforce)
-        if (f.PrimaryTagOnly && m.Tags.Length > 1) continue;
-        if (f.PrimarySurfaceOnly) {
-            bool hasSurface = false;
-            for (uint t = 0; t < m.Tags.Length; t++) {
-                string tag = m.Tags[t];
-                if (tag == "Race" || tag == "FullSpeed" || tag == "Tech" || tag == "Dirt" || tag == "Grass" || tag == "Ice" || tag == "Plastic") {
-                    hasSurface = true; break;
+        // Optional: Primary Tag (First tag out of all tags)
+        if (f.PrimaryTagOnly && f.IncludeTags.Length > 0) {
+            if (m.Tags.Length == 0) continue;
+            bool found = false;
+            for (uint j = 0; j < f.IncludeTags.Length; j++) {
+                if (m.Tags[0] == f.IncludeTags[j]) { found = true; break; }
+            }
+            if (!found) continue;
+        }
+        
+        // Optional: Primary Surface (First tag that is a surface)
+        if (f.PrimarySurfaceOnly && f.IncludeTags.Length > 0) {
+            string firstSurface = "";
+            for (uint j = 0; j < m.Tags.Length; j++) {
+                if (TMX::ArrayContains(TMX::SURFACE_TAGS, m.Tags[j])) {
+                    firstSurface = m.Tags[j];
+                    break;
                 }
             }
-            // If it has multiple surface tags, it's not "Primary Surface Only"
-            if (!hasSurface) continue;
+            if (firstSurface == "") continue;
+            bool found = false;
+            for (uint j = 0; j < f.IncludeTags.Length; j++) {
+                if (firstSurface == f.IncludeTags[j]) { found = true; break; }
+            }
+            if (!found) continue;
         }
 
         filtered.InsertLast(m);

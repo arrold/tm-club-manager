@@ -26,22 +26,7 @@ class CurationTab : Tab {
         return clicked;
     }
 
-    // --- Array Helpers (Restored from Reference) ---
-    bool ArrayContains(const string[] &in arr, const string &in value) {
-        for (uint i = 0; i < arr.Length; i++) {
-            if (arr[i] == value) return true;
-        }
-        return false;
-    }
 
-    void ArrayRemove(string[]@ arr, const string &in value) {
-        for (uint i = 0; i < arr.Length; i++) {
-            if (arr[i] == value) {
-                arr.RemoveAt(i);
-                return;
-            }
-        }
-    }
 
     void RenderFilters() {
         auto f = State::tmxFilters;
@@ -65,12 +50,12 @@ class CurationTab : Tab {
         UI::PopItemWidth();
 
         UI::SameLine();
-        if (DrawToggle(Icons::Tag + " Primary Tag Only", f.PrimaryTagOnly)) {
+        if (DrawToggle(Icons::Tag + " Primary Tag", f.PrimaryTagOnly)) {
             f.PrimaryTagOnly = !f.PrimaryTagOnly;
             if (f.PrimaryTagOnly) f.PrimarySurfaceOnly = false;
         }
         UI::SameLine();
-        if (DrawToggle(Icons::Leaf + " Primary Surface Only", f.PrimarySurfaceOnly)) {
+        if (DrawToggle(Icons::Leaf + " Primary Surface", f.PrimarySurfaceOnly)) {
             f.PrimarySurfaceOnly = !f.PrimarySurfaceOnly;
             if (f.PrimarySurfaceOnly) f.PrimaryTagOnly = false;
         }
@@ -101,16 +86,18 @@ class CurationTab : Tab {
 
         UI::Separator();
 
-        // Row 5+: Expanded Advanced Controls
-        UI::Columns(2, "AdvancedCols", false);
+        // Row 5: Advanced Ranges (Date & Time)
+        UI::BeginGroup();
         UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
         UI::PushItemWidth(120);
         f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
         f.UploadedTo = UI::InputText("To##up_t", f.UploadedTo);
         UI::PopItemWidth();
+        UI::EndGroup();
 
-        UI::NextColumn();
+        UI::SameLine(0, 40);
 
+        UI::BeginGroup();
         UI::TextDisabled("Author Time Range (HH:MM:SS)");
         UI::PushItemWidth(45);
         f.hFrom = UI::InputInt("##h_f", f.hFrom, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
@@ -120,12 +107,14 @@ class CurationTab : Tab {
         f.mTo = UI::InputInt("##m_t", f.mTo, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
         f.sTo = UI::InputInt("##s_t", f.sTo, 0);
         UI::PopItemWidth();
-        UI::Columns(1);
+        UI::EndGroup();
 
         UI::Separator();
 
         if (UI::Button(Icons::Search + " Search TMX")) {
             f.CurrentPage = 1;
+            f.TimeFromMs = (f.hFrom * 3600000) + (f.mFrom * 60000) + (f.sFrom * 1000);
+            f.TimeToMs = (f.hTo * 3600000) + (f.mTo * 60000) + (f.sTo * 1000);
             startnew(DoTmxSearch);
         }
         UI::SameLine();
@@ -150,35 +139,47 @@ class CurationTab : Tab {
 
     void RenderTagsSection() {
         auto f = State::tmxFilters;
-        string label = "Filter by Tags (" + (f.IncludeTags.Length + f.ExcludeTags.Length) + ")";
+        string label = "Filter by Tags (" + (f.IncludeTags.Length + f.ExcludeTags.Length) + ")  -  (Click: Include > Exclude > None)###TagsHeader";
         
-        if (UI::CollapsingHeader(label)) {
-            UI::Columns(5, "TagGrid", false);
+        UI::PushStyleVar(UI::StyleVar::FramePadding, vec2(10, 2));
+        UI::PushStyleColor(UI::Col::Header, vec4(0.2f, 0.2f, 0.2f, 0.2f));
+        bool isOpen = UI::CollapsingHeader(label);
+        UI::PopStyleColor();
+        UI::PopStyleVar();
+
+        if (isOpen) {
+            UI::PushStyleColor(UI::Col::Header, vec4(0, 0, 0, 0));
+            UI::PushStyleColor(UI::Col::HeaderHovered, vec4(0, 0, 0, 0));
+            UI::PushStyleColor(UI::Col::HeaderActive, vec4(0, 0, 0, 0));
+            
+            UI::Columns(6, "TagGrid", false);
             for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
                 string tag = TMX::TAG_NAMES[i];
                 int state = 0; // 0=None, 1=Include, 2=Exclude
                 
-                if (ArrayContains(f.IncludeTags, tag)) state = 1;
-                else if (ArrayContains(f.ExcludeTags, tag)) state = 2;
+                if (TMX::ArrayContains(f.IncludeTags, tag)) state = 1;
+                else if (TMX::ArrayContains(f.ExcludeTags, tag)) state = 2;
 
-                if (state == 1) UI::PushStyleColor(UI::Col::Text, vec4(0, 1, 0, 1));
-                else if (state == 2) UI::PushStyleColor(UI::Col::Text, vec4(1, 0.2f, 0.2f, 1));
+                if (state == 1) UI::PushStyleColor(UI::Col::Text, vec4(0.2f, 0.9f, 0.2f, 1));
+                else if (state == 2) UI::PushStyleColor(UI::Col::Text, vec4(0.9f, 0.2f, 0.2f, 1));
+                else UI::PushStyleColor(UI::Col::Text, vec4(0.6f, 0.6f, 0.6f, 1));
                 
-                if (UI::Selectable(tag, state != 0)) {
+                if (UI::Selectable(tag, false, UI::SelectableFlags::None)) {
                     if (state == 0) {
                         f.IncludeTags.InsertLast(tag);
                     } else if (state == 1) {
-                        ArrayRemove(f.IncludeTags, tag);
+                        TMX::ArrayRemove(f.IncludeTags, tag);
                         f.ExcludeTags.InsertLast(tag);
                     } else {
-                        ArrayRemove(f.ExcludeTags, tag);
+                        TMX::ArrayRemove(f.ExcludeTags, tag);
                     }
                 }
                 
-                if (state != 0) UI::PopStyleColor();
+                UI::PopStyleColor();
                 UI::NextColumn();
             }
             UI::Columns(1);
+            UI::PopStyleColor(3);
         }
     }
 
@@ -259,7 +260,7 @@ class CurationTab : Tab {
             }
         }
 
-        if (UI::BeginTable("SearchResultTable", 8, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
+        if (UI::BeginTable("SearchResultTable", 9, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
             UI::TableSetupColumn("Select", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("ID", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthStretch);
@@ -267,6 +268,7 @@ class CurationTab : Tab {
             UI::TableSetupColumn("Awards", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Length", UI::TableColumnFlags::WidthFixed, 80);
             UI::TableSetupColumn("Difficulty", UI::TableColumnFlags::WidthFixed, 100);
+            UI::TableSetupColumn("Tags", UI::TableColumnFlags::WidthStretch);
             UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 80);
             UI::TableHeadersRow();
 
@@ -287,6 +289,8 @@ class CurationTab : Tab {
                 UI::Text(Time::Format(m.LengthSecs * 1000));
                 UI::TableNextColumn();
                 UI::Text(m.DifficultyName);
+                UI::TableNextColumn();
+                UI::Text(string::Join(m.Tags, ", "));
                 UI::TableNextColumn();
                 if (UI::Button(Icons::ExternalLink + "##tmx" + i)) {
                     OpenBrowserURL("https://trackmania.exchange/maps/" + m.TrackId);

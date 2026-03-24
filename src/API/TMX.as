@@ -132,10 +132,29 @@ namespace TMX {
         if (json is null) {
             warn("[TMX] Search returned null.");
         } else if (json.GetType() != Json::Type::Array) {
-            warn("[TMX] Search returned non-array: " + Json::Write(json));
+            if (!(json.GetType() == Json::Type::Object && json.HasKey("Results"))) {
+                warn("[TMX] Search returned unexpected object type: " + json.GetType());
+            } else {
+                trace("[TMX] Found " + json["Results"].Length + " maps.");
+            }
         } else {
             trace("[TMX] Found " + json.Length + " maps.");
         }
         return json;
+    }
+    bool ArrayContains(const string[] &in arr, const string &in value) {
+        for (uint i = 0; i < arr.Length; i++) {
+            if (arr[i] == value) return true;
+        }
+        return false;
+    }
+
+    void ArrayRemove(string[]@ arr, const string &in value) {
+        for (uint i = 0; i < arr.Length; i++) {
+            if (arr[i] == value) {
+                arr.RemoveAt(i);
+                return;
+            }
+        }
     }
 }
