@@ -69,11 +69,13 @@ namespace TMX {
     Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
-        if (offset > 0) params += "&skip=" + tostring(offset);
-        // Only use after cursor for 'Newest' sort (enum 10) if desired, but skip/offset is safer for all sorts
-        // if (f.SortPrimary == 3 && f.AfterId > 0) params += "&after=" + tostring(f.AfterId);
+        // Priority filters first for TMX V1 stability
+        if (f.InTOTD == 1) params += "&intotd=1";
+        else if (f.InTOTD == 0) params += "&intotd=0";
 
         if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
+        
+        if (offset > 0) params += "&skip=" + tostring(offset);
         
         // Use the first selected difficulty for API filtering
         for (uint i = 0; i < f.Difficulties.Length; i++) {
@@ -86,7 +88,7 @@ namespace TMX {
         if (f.TimeFromMs > 0) params += "&authortimemin=" + tostring(f.TimeFromMs);
         if (f.TimeToMs > 0) params += "&authortimemax=" + tostring(f.TimeToMs);
 
-        // Tags must be passed as individual &tag= parameters for multiple selection to work on TMX V1/V2 mix
+        // Tags must be passed as individual &tag= parameters
         for (uint i = 0; i < f.IncludeTags.Length; i++) {
             uint tid = GetTagIdFromName(f.IncludeTags[i]);
             if (tid > 0) params += "&tag=" + tostring(tid);
@@ -110,23 +112,10 @@ namespace TMX {
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }
 
-        if (f.InTOTD == 1) params += "&intotd=1";
-        else if (f.InTOTD == 0) params += "&intotd=0";
-        
-        if (f.InCollection >= 0) {
-            if (f.InCollection == 0) {
-                // Map Collection 0 (Track of the Day) to the functional intotd parameter
-                if (!params.Contains("intotd=")) params += "&intotd=1";
-            } else {
-                params += "&collection=" + tostring(f.InCollection);
-            }
+        if (f.InCollection >= 0 && f.InCollection != 0) {
+            params += "&collection=" + tostring(f.InCollection);
         }
         
-        // Workaround for TMX 500 error with intotd=0 (Not TOTD)
-        // Workaround for TMX 500 error: if etag is missing but intotd=0 is present, the API sometimes fails.
-        // However, we should avoid sending an empty etag= if not needed.
-        if (params.Contains("intotd=0") && !params.Contains("&etag=")) params += "&etag=";
-
         trace("[TMX] Search Params: " + params);
         auto json = TmxSearch(params);
         if (json is null) {

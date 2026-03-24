@@ -2,35 +2,40 @@
 
 TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
     TmxMap[] allResults;
+    uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
+    uint totalNeeded = skipCount + limit;
     uint offset = 0;
     
-    // Subscriptions and Curation searches use 'CurrentPage' for the base skip.
-    // TMX V1 uses 1-based paging internally but '&skip=N' for absolute offset.
-    if (applyOffset && f.CurrentPage > 1) {
-        offset = (f.CurrentPage - 1) * 25;
-    }
-
-    uint batchSize = 100; // Efficient batching
-    while (allResults.Length < limit) {
+    uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50)); // Smaller batches for stability
+    while (allResults.Length < totalNeeded) {
         auto json = TMX::SearchMaps(f, batchSize, offset);
         int fetchedCount = 0;
         TmxMap[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
         for (uint i = 0; i < batch.Length; i++) {
-            if (allResults.Length < limit) {
+            if (allResults.Length < totalNeeded) {
                 allResults.InsertLast(batch[i]);
             }
         }
 
-        if (allResults.Length >= limit) break;
+        if (allResults.Length >= totalNeeded) break;
         if (fetchedCount < int(batchSize)) break; // No more results matching filters available
 
         // Advance the skip pointer by exactly what TMX gave us
         offset += fetchedCount;
+        yield(); // Let the UI breathe
     }
     
-    trace("[TMX] Total results after logic filtering: " + allResults.Length);
-    return allResults;
+    // Slice only the requested page
+    TmxMap[] pageResults;
+    if (allResults.Length > skipCount) {
+        for (uint i = skipCount; i < allResults.Length; i++) {
+            pageResults.InsertLast(allResults[i]);
+        }
+    }
+    
+    trace("[TMX] Scan complete. Found " + allResults.Length + " maps total. Returning page offset " + skipCount);
+    return pageResults;
 }
 
 TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requestedCount, int&out fetchedCount) {

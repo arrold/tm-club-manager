@@ -254,7 +254,7 @@ class CurationTab : Tab {
                 Subscription@ sub = Subscription();
                 sub.ActivityId = State::TargetActivity.Id;
                 sub.ActivityName = State::TargetActivity.Name;
-                @sub.Filters = State::tmxFilters;
+                @sub.Filters = State::tmxFilters.Clone();
                 Subscriptions::Add(sub);
                 UI::ShowNotification("Club Manager", "Subscription saved for " + State::TargetActivity.Name);
             }

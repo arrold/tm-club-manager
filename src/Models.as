@@ -347,6 +347,31 @@ class TmxSearchFilters {
         }
     }
 
+    TmxSearchFilters@ Clone() {
+        auto other = TmxSearchFilters();
+        other.AuthorName = AuthorName;
+        other.Vehicle = Vehicle;
+        other.Difficulty = Difficulty;
+        for (uint i = 0; i < Difficulties.Length; i++) other.Difficulties[i] = Difficulties[i];
+        other.TimeFromMs = TimeFromMs;
+        other.TimeToMs = TimeToMs;
+        other.UploadedFrom = UploadedFrom;
+        other.UploadedTo = UploadedTo;
+        other.SortPrimary = SortPrimary;
+        other.SortSecondary = SortSecondary;
+        other.InTOTD = InTOTD;
+        other.InCollection = InCollection;
+        other.InOnlineRecords = InOnlineRecords;
+        other.HideOversized = HideOversized;
+        other.PrimaryTagOnly = PrimaryTagOnly;
+        other.PrimarySurfaceOnly = PrimarySurfaceOnly;
+        other.ResultLimit = ResultLimit;
+        other.CurrentPage = CurrentPage;
+        for (uint i = 0; i < IncludeTags.Length; i++) other.IncludeTags.InsertLast(IncludeTags[i]);
+        for (uint i = 0; i < ExcludeTags.Length; i++) other.ExcludeTags.InsertLast(ExcludeTags[i]);
+        return other;
+    }
+
     Json::Value@ ToJson() {
         Json::Value@ json = Json::Object();
         json["AuthorName"] = AuthorName;
