@@ -1,8 +1,8 @@
-// Tabs/CurationTab.as - TMX Search & Curation (Zertrov Style)
+// Tabs/CurationTab.as - TMX search and subscription curation (Zertrov Style)
 
 class CurationTab : Tab {
     CurationTab() {
-        super("TMX Curation", "\\$z\\$f93" + Icons::Search + "\\$z");
+        super("TMX Search", Icons::Search);
     }
 
     void DrawInner() override {
@@ -11,164 +11,120 @@ class CurationTab : Tab {
         RenderResults();
     }
 
+    // Helper for nice-looking toggle buttons
+    bool DrawToggle(const string &in label, bool active, const vec4 &in activeColor = vec4(0.18f, 0.42f, 0.72f, 0.8f)) {
+        if (active) {
+            UI::PushStyleColor(UI::Col::Button, activeColor);
+            UI::PushStyleColor(UI::Col::ButtonHovered, activeColor * 1.2f);
+        } else {
+            UI::PushStyleColor(UI::Col::Button, vec4(0.2f, 0.2f, 0.2f, 0.4f));
+        }
+        
+        bool clicked = UI::Button(label);
+        
+        UI::PopStyleColor(active ? 2 : 1);
+        return clicked;
+    }
+
+    // --- Array Helpers (Restored from Reference) ---
+    bool ArrayContains(const string[] &in arr, const string &in value) {
+        for (uint i = 0; i < arr.Length; i++) {
+            if (arr[i] == value) return true;
+        }
+        return false;
+    }
+
+    void ArrayRemove(string[]@ arr, const string &in value) {
+        for (uint i = 0; i < arr.Length; i++) {
+            if (arr[i] == value) {
+                arr.RemoveAt(i);
+                return;
+            }
+        }
+    }
+
     void RenderFilters() {
         auto f = State::tmxFilters;
 
-        // --- Row 1: Author, Vehicle, Limit ---
-        UI::Columns(3, "tmx_core_filters", false);
-        UI::TextDisabled("Author");
-        f.AuthorName = UI::InputText("##author", f.AuthorName);
-        UI::NextColumn();
-        
-        UI::TextDisabled("Vehicle");
-        int vehIdx = f.Vehicle;
-        string currentVeh = (vehIdx >= 0 && vehIdx < int(TMX::VEHICLE_NAMES.Length)) ? TMX::VEHICLE_NAMES[vehIdx] : "Any";
-        UI::PushItemWidth(-1);
-        if (bool(UI::BeginCombo("##vehicle", currentVeh))) {
-            if (UI::Selectable("Any", vehIdx == -1)) f.Vehicle = -1;
-            for (uint i = 0; i < TMX::VEHICLE_NAMES.Length; i++) {
-                if (UI::Selectable(TMX::VEHICLE_NAMES[i], vehIdx == int(i))) f.Vehicle = i;
-            }
-            UI::EndCombo();
-        }
+        // Row 1: High-Density Top Row
+        UI::PushItemWidth(150);
+        f.AuthorName = UI::InputText("Author", f.AuthorName);
+        UI::SameLine();
+        f.SortPrimary = DrawCombo("Primary Sort", f.SortPrimary, TMX::SORT_NAMES);
+        UI::SameLine();
+        f.SortSecondary = DrawCombo("Secondary Sort", f.SortSecondary, TMX::SORT_NAMES);
         UI::PopItemWidth();
-        UI::NextColumn();
 
-        UI::TextDisabled("Limit");
-        f.ResultLimit = UI::InputInt("##limit", f.ResultLimit);
+        UI::Separator();
+
+        // Row 2: Results & Quick Toggles
+        UI::PushItemWidth(100);
+        f.ResultLimit = uint(UI::InputInt("Maps per Page", int(f.ResultLimit)));
         if (f.ResultLimit < 1) f.ResultLimit = 1;
         if (f.ResultLimit > 100) f.ResultLimit = 100;
-        UI::Columns(1);
-
-        // --- Row 2: Sorts ---
-        UI::Columns(2, "tmx_sort_filters", false);
-        UI::TextDisabled("Primary Sort");
-        int sortPri = f.SortPrimary;
-        string currentSortPri = (sortPri >= 0 && sortPri < int(TMX::SORT_NAMES.Length)) ? TMX::SORT_NAMES[sortPri] : "Newest";
-        UI::PushItemWidth(-1);
-        if (bool(UI::BeginCombo("##sort1", currentSortPri))) {
-            for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
-                if (UI::Selectable(TMX::SORT_NAMES[i], sortPri == int(i))) f.SortPrimary = i;
-            }
-            UI::EndCombo();
-        }
         UI::PopItemWidth();
-        UI::NextColumn();
 
-        UI::TextDisabled("Secondary Sort");
-        int sortSec = f.SortSecondary;
-        string currentSortSec = (sortSec >= 0 && sortSec < int(TMX::SORT_NAMES.Length)) ? TMX::SORT_NAMES[sortSec] : "None";
-        UI::PushItemWidth(-1);
-        if (bool(UI::BeginCombo("##sort2", currentSortSec))) {
-            if (UI::Selectable("None", sortSec == -1)) f.SortSecondary = -1;
-            for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
-                if (UI::Selectable(TMX::SORT_NAMES[i], sortSec == int(i))) f.SortSecondary = i;
-            }
-            UI::EndCombo();
-        }
-        UI::PopItemWidth();
-        UI::Columns(1);
-
-        UI::Separator();
-
-        // --- Difficulty ---
-        UI::TextDisabled("Difficulty");
-        for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
-            if (i > 0) UI::SameLine();
-            bool selected = f.Difficulties[i];
-            if (selected) UI::PushStyleColor(UI::Col::Button, vec4(0, 0.4, 0.7, 0.8));
-            if (UI::Button(TMX::DIFFICULTY_NAMES[i])) {
-                f.Difficulties[i] = !selected;
-            }
-            if (selected) UI::PopStyleColor();
-        }
-
-        UI::Separator();
-
-        // --- Row 3: Tags (Cloud format) ---
-        if (UI::TreeNode("Tags Selection (Click once to Include, twice to Exclude)")) {
-            UI::Columns(5, "tmx_tags_cloud", false);
-            for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
-                string t = TMX::TAG_NAMES[i];
-                bool inc = f.IncludeTags.Find(t) != -1;
-                bool exc = f.ExcludeTags.Find(t) != -1;
-                
-                if (exc) UI::PushStyleColor(UI::Col::Text, vec4(1, 0.3, 0.3, 1));
-                else if (inc) UI::PushStyleColor(UI::Col::Text, vec4(0.3, 1, 0.3, 1));
-
-                if (UI::Selectable(t, inc || exc)) {
-                    if (!inc && !exc) f.IncludeTags.InsertLast(t);
-                    else if (inc) { f.IncludeTags.RemoveAt(f.IncludeTags.Find(t)); f.ExcludeTags.InsertLast(t); }
-                    else f.ExcludeTags.RemoveAt(f.ExcludeTags.Find(t));
-                }
-                
-                if (inc || exc) UI::PopStyleColor();
-                UI::NextColumn();
-            }
-            UI::Columns(1);
-            if (UI::Button("Clear All Tags")) {
-                f.IncludeTags.RemoveRange(0, f.IncludeTags.Length);
-                f.ExcludeTags.RemoveRange(0, f.ExcludeTags.Length);
-            }
-            UI::TreePop();
-        }
-
-        UI::Separator();
-
-        // --- Row 4: Checkboxes (Manual Toggle) ---
-        UI::Columns(4, "tmx_check_filters", false);
-        if (UI::Button((f.InTOTD == 1 ? Icons::CheckSquare : Icons::Square) + " TOTD")) {
-            f.InTOTD = (f.InTOTD == 1 ? -1 : 1);
-        }
-        UI::NextColumn();
-
-        if (UI::Button((f.InOnlineRecords == 1 ? Icons::CheckSquare : Icons::Square) + " My Record")) {
-            f.InOnlineRecords = (f.InOnlineRecords == 1 ? -1 : 1);
-        }
-        UI::NextColumn();
-
-        if (UI::Button((f.PrimaryTagOnly ? Icons::CheckSquare : Icons::Square) + " Pri Tag Only")) {
+        UI::SameLine();
+        if (DrawToggle(Icons::Tag + " Primary Tag Only", f.PrimaryTagOnly)) {
             f.PrimaryTagOnly = !f.PrimaryTagOnly;
+            if (f.PrimaryTagOnly) f.PrimarySurfaceOnly = false;
         }
-        UI::NextColumn();
-
-        if (UI::Button((f.PrimarySurfaceOnly ? Icons::CheckSquare : Icons::Square) + " Pri Surface Only")) {
+        UI::SameLine();
+        if (DrawToggle(Icons::Leaf + " Primary Surface Only", f.PrimarySurfaceOnly)) {
             f.PrimarySurfaceOnly = !f.PrimarySurfaceOnly;
+            if (f.PrimarySurfaceOnly) f.PrimaryTagOnly = false;
         }
-        UI::Columns(1);
 
         UI::Separator();
 
-        // --- Author Time Range ---
-        UI::TextDisabled("Author Time Range (H : M : S)");
-        UI::PushItemWidth(80);
-        f.hFrom = Text::ParseInt(UI::InputText("##h_f", tostring(f.hFrom))); UI::SameLine();
-        UI::Text(":"); UI::SameLine();
-        f.mFrom = Text::ParseInt(UI::InputText("##m_f", tostring(f.mFrom))); UI::SameLine();
-        UI::Text(":"); UI::SameLine();
-        f.sFrom = Text::ParseInt(UI::InputText("##s_f", tostring(f.sFrom))); UI::SameLine();
-        UI::Text(" to "); UI::SameLine();
-        f.hTo = Text::ParseInt(UI::InputText("##h_t", tostring(f.hTo))); UI::SameLine();
-        UI::Text(":"); UI::SameLine();
-        f.mTo = Text::ParseInt(UI::InputText("##m_t", tostring(f.mTo))); UI::SameLine();
-        UI::Text(":"); UI::SameLine();
-        f.sTo = Text::ParseInt(UI::InputText("##s_t", tostring(f.sTo)));
+        // Row 3: Difficulties (Interactive Row)
+        UI::TextDisabled("Difficulties:");
+        for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
+            if (DrawToggle(TMX::DIFFICULTY_NAMES[i], f.Difficulties[i], vec4(0.2f, 0.6f, 0.2f, 0.8f))) {
+                f.Difficulties[i] = !f.Difficulties[i];
+            }
+            if (i < TMX::DIFFICULTY_NAMES.Length - 1) UI::SameLine();
+        }
+
+        UI::Separator();
+
+        // Row 4: TOTD & Tags (Ingenious)
+        UI::PushItemWidth(200);
+        int currentTotd = (f.InTOTD == 1) ? 1 : (f.InTOTD == 0 ? 2 : 0);
+        int selectionDiff = DrawCombo("Track of the Day", currentTotd, {"Any", "TOTD Only", "Not TOTD"});
+        if (selectionDiff == 1) f.InTOTD = 1;
+        else if (selectionDiff == 2) f.InTOTD = 0;
+        else f.InTOTD = -1;
         UI::PopItemWidth();
+        
+        RenderTagsSection();
 
         UI::Separator();
 
-        // --- Uploaded Date Range ---
+        // Row 5+: Expanded Advanced Controls
+        UI::Columns(2, "AdvancedCols", false);
         UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
         UI::PushItemWidth(120);
         f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
         f.UploadedTo = UI::InputText("To##up_t", f.UploadedTo);
         UI::PopItemWidth();
 
+        UI::NextColumn();
+
+        UI::TextDisabled("Author Time Range (HH:MM:SS)");
+        UI::PushItemWidth(45);
+        f.hFrom = UI::InputInt("##h_f", f.hFrom, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
+        f.mFrom = UI::InputInt("##m_f", f.mFrom, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
+        f.sFrom = UI::InputInt("##s_f", f.sFrom, 0); UI::SameLine(); UI::Text(" to "); UI::SameLine();
+        f.hTo = UI::InputInt("##h_t", f.hTo, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
+        f.mTo = UI::InputInt("##m_t", f.mTo, 0); UI::SameLine(); UI::Text(":"); UI::SameLine();
+        f.sTo = UI::InputInt("##s_t", f.sTo, 0);
+        UI::PopItemWidth();
+        UI::Columns(1);
+
         UI::Separator();
 
         if (UI::Button(Icons::Search + " Search TMX")) {
-            f.PageStartingTrackIds.RemoveRange(0, f.PageStartingTrackIds.Length);
-            f.PageStartingTrackIds.InsertLast(0);
             f.CurrentPage = 1;
             startnew(DoTmxSearch);
         }
@@ -187,9 +143,57 @@ class CurationTab : Tab {
             startnew(DoTmxSearch);
         }
         UI::SameLine();
-        if (UI::Button(Icons::Trash + " Clear")) {
+        if (UI::Button(Icons::Trash + " Clear All Filters")) {
             State::tmxFilters = TmxSearchFilters();
         }
+    }
+
+    void RenderTagsSection() {
+        auto f = State::tmxFilters;
+        string label = "Filter by Tags (" + (f.IncludeTags.Length + f.ExcludeTags.Length) + ")";
+        
+        if (UI::CollapsingHeader(label)) {
+            UI::Columns(5, "TagGrid", false);
+            for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
+                string tag = TMX::TAG_NAMES[i];
+                int state = 0; // 0=None, 1=Include, 2=Exclude
+                
+                if (ArrayContains(f.IncludeTags, tag)) state = 1;
+                else if (ArrayContains(f.ExcludeTags, tag)) state = 2;
+
+                if (state == 1) UI::PushStyleColor(UI::Col::Text, vec4(0, 1, 0, 1));
+                else if (state == 2) UI::PushStyleColor(UI::Col::Text, vec4(1, 0.2f, 0.2f, 1));
+                
+                if (UI::Selectable(tag, state != 0)) {
+                    if (state == 0) {
+                        f.IncludeTags.InsertLast(tag);
+                    } else if (state == 1) {
+                        ArrayRemove(f.IncludeTags, tag);
+                        f.ExcludeTags.InsertLast(tag);
+                    } else {
+                        ArrayRemove(f.ExcludeTags, tag);
+                    }
+                }
+                
+                if (state != 0) UI::PopStyleColor();
+                UI::NextColumn();
+            }
+            UI::Columns(1);
+        }
+    }
+
+    int DrawCombo(const string &in label, int current, const string[]@ options) {
+        string currentName = (current >= 0 && current < int(options.Length)) ? options[current] : "Any";
+        int result = current;
+        if (UI::BeginCombo(label, currentName)) {
+            for (uint i = 0; i < options.Length; i++) {
+                if (UI::Selectable(options[i], int(i) == current)) {
+                    result = int(i);
+                }
+            }
+            UI::EndCombo();
+        }
+        return result;
     }
 
     void RenderResults() {
@@ -203,13 +207,15 @@ class CurationTab : Tab {
         }
 
         // --- Target Selection for Batch Add ---
-        UI::TextDisabled("Target Activity:"); UI::SameLine();
+        string limitStr = (State::TargetActivity !is null) ? (State::TargetActivity.Type == "campaign" ? " (Max 25)" : " (Max 100)") : "";
+        UI::TextDisabled("Target Activity" + limitStr + ":"); UI::SameLine();
         string targetName = (State::TargetActivity !is null) ? State::TargetActivity.Name : "None Selected";
         UI::PushItemWidth(300);
         if (bool(UI::BeginCombo("##batch_target", targetName))) {
             if (State::SelectedClub !is null) {
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
                     auto a = State::ClubActivities[i];
+                    if (a.Type != "campaign" && a.Type != "room") continue;
                     if (UI::Selectable(a.Name, State::TargetActivity !is null && State::TargetActivity.Id == a.Id)) {
                         @State::TargetActivity = a;
                     }
@@ -247,35 +253,46 @@ class CurationTab : Tab {
                 Subscription@ sub = Subscription();
                 sub.ActivityId = State::TargetActivity.Id;
                 sub.ActivityName = State::TargetActivity.Name;
-                @sub.Filters = TmxSearchFilters(State::tmxFilters.ToJson());
-                sub.MapLimit = State::tmxFilters.ResultLimit;
+                @sub.Filters = State::tmxFilters;
                 Subscriptions::Add(sub);
-                UI::ShowNotification("Success", "Search saved as subscription for " + State::TargetActivity.Name);
+                UI::ShowNotification("Club Manager", "Subscription saved for " + State::TargetActivity.Name);
             }
         }
 
-        UI::BeginChild("tmx_results_scroll");
-        UI::Columns(7, "tmx_results_cols");
-        UI::Text("Sel"); UI::NextColumn();
-        UI::Text("Name"); UI::NextColumn();
-        UI::Text("Author"); UI::NextColumn();
-        UI::Text("Length"); UI::NextColumn();
-        UI::Text("Difficulty"); UI::NextColumn();
-        UI::Text("Awards"); UI::NextColumn();
-        UI::Text("Tags"); UI::NextColumn();
-        UI::Separator();
+        if (UI::BeginTable("SearchResultTable", 8, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
+            UI::TableSetupColumn("Select", UI::TableColumnFlags::WidthFixed, 40);
+            UI::TableSetupColumn("ID", UI::TableColumnFlags::WidthFixed, 60);
+            UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Awards", UI::TableColumnFlags::WidthFixed, 60);
+            UI::TableSetupColumn("Length", UI::TableColumnFlags::WidthFixed, 80);
+            UI::TableSetupColumn("Difficulty", UI::TableColumnFlags::WidthFixed, 100);
+            UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 80);
+            UI::TableHeadersRow();
 
-        for (uint i = 0; i < State::tmxSearchResults.Length; i++) {
-            auto m = State::tmxSearchResults[i];
-            State::tmxSelected[i] = UI::Checkbox("##sel" + i, State::tmxSelected[i]); UI::NextColumn();
-            UI::Text(m.Name); UI::NextColumn();
-            UI::Text(m.Author); UI::NextColumn();
-            UI::Text(Time::Format(m.LengthSecs * 1000)); UI::NextColumn();
-            UI::Text(m.DifficultyName); UI::NextColumn();
-            UI::Text("" + m.AwardCount); UI::NextColumn();
-            UI::Text(string::Join(m.Tags, ", ")); UI::NextColumn();
+            for (uint i = 0; i < State::tmxSearchResults.Length; i++) {
+                auto m = State::tmxSearchResults[i];
+                UI::TableNextRow();
+                UI::TableNextColumn();
+                State::tmxSelected[i] = UI::Checkbox("##sel" + i, State::tmxSelected[i]);
+                UI::TableNextColumn();
+                UI::Text(tostring(m.TrackId));
+                UI::TableNextColumn();
+                UI::Text(m.Name);
+                UI::TableNextColumn();
+                UI::Text(m.Author);
+                UI::TableNextColumn();
+                UI::Text(tostring(m.AwardCount));
+                UI::TableNextColumn();
+                UI::Text(Time::Format(m.LengthSecs * 1000));
+                UI::TableNextColumn();
+                UI::Text(m.DifficultyName);
+                UI::TableNextColumn();
+                if (UI::Button(Icons::ExternalLink + "##tmx" + i)) {
+                    OpenBrowserURL("https://trackmania.exchange/maps/" + m.TrackId);
+                }
+            }
+            UI::EndTable();
         }
-        UI::Columns(1);
-        UI::EndChild();
     }
 }

@@ -6,6 +6,7 @@ namespace State {
     Club@ SelectedClub;
     Activity[] ClubActivities;
     Club[] MyClubs;
+    Activity@ PersonalTracksProxy;
 
     // Refresh State
     bool refreshingClubs = false;

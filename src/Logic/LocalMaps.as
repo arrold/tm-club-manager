@@ -225,13 +225,16 @@ void DoAddLocalMap(ref@ r) {
         return;
     }
 
-    // 2. Commit to server
-    ApplyBatchToActivity(State::TargetActivity, uids);
-    State::TargetActivity.HasMapChanges = false;
-    
-    // 3. Confirm and sync
-    UI::ShowNotification("Club Manager", "Successfully added '" + m.Name + "' to " + State::TargetActivity.Name, vec4(0, 1, 0, 1));
-    startnew(LoadActivityMaps, State::TargetActivity);
+    // 2. Commit to server (Skip if personal)
+    if (State::TargetActivity.Id != 0xFFFFFFFF) {
+        ApplyBatchToActivity(State::TargetActivity, uids);
+        State::TargetActivity.HasMapChanges = false;
+        UI::ShowNotification("Club Manager", "Successfully added '" + m.Name + "' to " + State::TargetActivity.Name, vec4(0, 1, 0, 1));
+        startnew(LoadActivityMaps, State::TargetActivity);
+    } else {
+        UI::ShowNotification("Club Manager", "Map '" + m.Name + "' registered to Nadeo Personal Tracks.", vec4(0.2, 0.8, 0.2, 1));
+        m.IsUploaded = true;
+    }
 }
 
 void DoAddSelectedLocalMaps() {
@@ -265,11 +268,16 @@ void DoAddSelectedLocalMaps() {
     }
     
     if (count > 0) {
-        trace("[LocalMaps] Immediate Bulk Add: Committing " + count + " maps to " + a.Name);
-        ApplyBatchToActivity(a, uids);
-        a.HasMapChanges = false;
-        UI::ShowNotification("Club Manager", "Successfully added " + count + " maps to " + a.Name, vec4(0, 1, 0, 1));
-        startnew(LoadActivityMaps, a);
+        if (a.Id != 0xFFFFFFFF) {
+            trace("[LocalMaps] Immediate Bulk Add: Committing " + count + " maps to " + a.Name);
+            ApplyBatchToActivity(a, uids);
+            a.HasMapChanges = false;
+            UI::ShowNotification("Club Manager", "Successfully added " + count + " maps to " + a.Name, vec4(0, 1, 0, 1));
+            startnew(LoadActivityMaps, a);
+        } else {
+             UI::ShowNotification("Club Manager", "Uploaded " + count + " maps to Nadeo Personal Tracks.", vec4(0.2, 0.8, 0.2, 1));
+             startnew(RefreshLocalMaps);
+        }
     }
 }
 

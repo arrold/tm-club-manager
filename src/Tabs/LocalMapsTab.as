@@ -13,10 +13,20 @@ class LocalMapsTab : Tab {
             return;
         }
 
+        if (State::PersonalTracksProxy is null) {
+            @State::PersonalTracksProxy = Activity();
+            State::PersonalTracksProxy.Id = 0xFFFFFFFF;
+            State::PersonalTracksProxy.Name = "Nadeo Personal Tracks (Upload Only)";
+            State::PersonalTracksProxy.Type = "personal";
+        }
+
         UI::BeginGroup();
         UI::Text("Target Activity:");
         UI::SameLine();
         if (UI::BeginCombo("##target_act_local", State::TargetActivity is null ? "None" : State::TargetActivity.Name)) {
+            if (UI::Selectable(State::PersonalTracksProxy.Name, State::TargetActivity !is null && State::TargetActivity.Id == State::PersonalTracksProxy.Id)) {
+                @State::TargetActivity = State::PersonalTracksProxy;
+            }
             for (uint i = 0; i < State::ClubActivities.Length; i++) {
                 if (State::ClubActivities[i].Type == "campaign" || State::ClubActivities[i].Type == "room") {
                     if (UI::Selectable(State::ClubActivities[i].Name, State::TargetActivity !is null && State::TargetActivity.Id == State::ClubActivities[i].Id)) {

@@ -1,208 +1,158 @@
-// Logic/TmxCuration.as - TMX search & curation business logic (Zertrov Style)
-
-void DoTmxSearch() {
-    if (State::searchInProgress) return;
-    State::searchInProgress = true;
-    
-    State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
-    
-    auto tmxMaps = FetchMapsSequential(State::tmxFilters, State::tmxFilters.ResultLimit, false);
-    for (uint i = 0; i < tmxMaps.Length; i++) {
-        State::tmxSearchResults.InsertLast(tmxMaps[i]);
-    }
-
-    State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
-    for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
-    
-    print("[TMX] Found " + State::tmxSearchResults.Length + " maps.");
-    State::searchInProgress = false;
-}
+// Logic/TmxCuration.as - Sequential TMX fetching and curation helpers (Zertrov Style)
 
 TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
-    TmxMap[] allMatches;
-    TmxSearchFilters@ tempFilters = TmxSearchFilters(f.ToJson());
-    int lastAnalysedId = 0;
-    bool usingAfterId = false;
-
-    if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingTrackIds.Length)) {
-        lastAnalysedId = f.PageStartingTrackIds[f.CurrentPage - 1];
-        usingAfterId = (lastAnalysedId > 0);
+    TmxMap[] allResults;
+    uint offset = 0;
+    
+    // Subscriptions and Curation searches use 'CurrentPage' for the base skip.
+    // TMX V1 uses 1-based paging internally but '&skip=N' for absolute offset.
+    if (applyOffset && f.CurrentPage > 1) {
+        offset = (f.CurrentPage - 1) * 25;
     }
-    
-    // Global skip count across all batches if we aren't using an 'after' ID
-    f.remainingSkip = (applyOffset && f.CurrentPage > 1 && !usingAfterId) ? (uint(f.CurrentPage - 1) * limit) : 0;
-    
-    uint batches = 0;
-    bool hasMore = true;
-    
-    // Increased batch limit to 20 to handle large Top TOTD clubs (150+ maps)
-    while (allMatches.Length < limit && hasMore && batches < 20) {
-        batches++;
-        auto json = TMX::SearchMaps(tempFilters, 100);
-        if (json is null) break;
-        
-        auto results = (json.HasKey("Results")) ? json["Results"] : json;
-        if (results.GetType() != Json::Type::Array || results.Length == 0) break;
-        
-        int batchLastId = 0;
-        auto batch = FilterTmxResults(results, f, limit - allMatches.Length, batchLastId);
-        
-        if (batchLastId > 0) lastAnalysedId = batchLastId;
-        for (uint i = 0; i < batch.Length; i++) allMatches.InsertLast(batch[i]);
-        
-        hasMore = json.HasKey("More") && bool(json["More"]);
-        if (hasMore) {
-            tempFilters.PageStartingTrackIds.InsertLast(lastAnalysedId);
-            // Sync current page to the end of our current tracked IDs so the NEXT batch uses this cursor
-            tempFilters.CurrentPage = tempFilters.PageStartingTrackIds.Length;
-            
-            // Sync the progress back to the original filter so the NEXT page knows where to start
-            if (int(tempFilters.PageStartingTrackIds.Length) > int(f.PageStartingTrackIds.Length)) {
-                f.PageStartingTrackIds.InsertLast(lastAnalysedId);
+
+    uint batchSize = 100; // Efficient batching
+    while (allResults.Length < limit) {
+        auto json = TMX::SearchMaps(f, batchSize, offset);
+        int fetchedCount = 0;
+        TmxMap[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
+
+        for (uint i = 0; i < batch.Length; i++) {
+            if (allResults.Length < limit) {
+                allResults.InsertLast(batch[i]);
             }
         }
+
+        if (allResults.Length >= limit) break;
+        if (fetchedCount < int(batchSize)) break; // No more results matching filters available
+
+        // Advance the skip pointer by exactly what TMX gave us
+        offset += fetchedCount;
     }
     
-    // Final sync of the starting ID for the next page if not already there
-    if (f.CurrentPage == int(f.PageStartingTrackIds.Length) && hasMore) {
-        f.PageStartingTrackIds.InsertLast(lastAnalysedId);
-    }
-    return allMatches;
+    trace("[TMX] Total results after logic filtering: " + allResults.Length);
+    return allResults;
 }
 
-bool IsSurfaceTag(const string &in tag) {
-    for (uint i = 0; i < TMX::SURFACE_TAGS.Length; i++) {
-        if (TMX::SURFACE_TAGS[i] == tag) return true;
-    }
-    return false;
-}
-
-TmxMap[] FilterTmxResults(Json::Value@ results, TmxSearchFilters@ f, uint limit, int &out lastTrackId) {
+TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requestedCount, int&out fetchedCount) {
     TmxMap[] filtered;
-    lastTrackId = 0;
-    if (results is null || results.GetType() != Json::Type::Array) return filtered;
+    fetchedCount = 0;
+
+    if (json is null) return filtered;
     
-    // uint skipCount = (applyOffset && f.CurrentPage > 1) ? (uint(f.CurrentPage - 1) * limit) : 0;
-    // matchesFound = 0;
+    Json::Value@ results = json;
+    if (json.GetType() == Json::Type::Object && json.HasKey("Results") && json["Results"].GetType() == Json::Type::Array) {
+        @results = json["Results"];
+    }
 
-    bool hasDiffFilter = false;
-    for (uint j = 0; j < f.Difficulties.Length; j++) if (f.Difficulties[j]) { hasDiffFilter = true; break; }
+    if (results.GetType() != Json::Type::Array) return filtered;
 
+    fetchedCount = results.Length;
     for (uint i = 0; i < results.Length; i++) {
-        lastTrackId = int(results[i]["MapId"]);
         TmxMap m(results[i]);
+        if (m.Uid == "") continue;
+
+        // Apply secondary logic filters
+        if (f.AuthorName != "" && !m.Author.ToLower().Contains(f.AuthorName.ToLower())) continue;
         
-        // Multi-select difficulty local filter (for sequential fetching robustness)
-        if (hasDiffFilter) {
-            if (m.Difficulty < 1 || m.Difficulty > 6 || !f.Difficulties[m.Difficulty - 1]) continue;
-        }
-
-        if (f.PrimaryTagOnly && f.IncludeTags.Length > 0) {
-            if (m.Tags.Length == 0 || m.Tags[0] != f.IncludeTags[0]) continue;
-        }
-
-        if (f.PrimarySurfaceOnly && f.IncludeTags.Length > 0) {
-            string searchTag = f.IncludeTags[0];
-            string firstSurface = "";
-            for (uint j = 0; j < m.Tags.Length; j++) {
-                if (IsSurfaceTag(m.Tags[j])) {
-                    firstSurface = m.Tags[j];
-                    break;
+        // Difficulty filter (Normalised 1-6)
+        if (m.Difficulty > 0 && m.Difficulty <= 6) {
+            bool diffPassed = false;
+            bool anyDiffSet = false;
+            for (uint d = 0; d < f.Difficulties.Length; d++) {
+                if (f.Difficulties[d]) {
+                    anyDiffSet = true;
+                    if (m.Difficulty == int(d + 1)) { diffPassed = true; break; }
                 }
             }
-            if (firstSurface != searchTag) continue;
+            if (anyDiffSet && !diffPassed) continue;
         }
 
-        if (f.HideOversized) {
-            if (m.ServerSizeExceeded || m.EmbeddedItemsSize > 4000000 || m.DisplayCost > 13000) continue;
+        // Primary Tag/Surface Only (TMX might return tags as hints, we enforce)
+        if (f.PrimaryTagOnly && m.Tags.Length > 1) continue;
+        if (f.PrimarySurfaceOnly) {
+            bool hasSurface = false;
+            for (uint t = 0; t < m.Tags.Length; t++) {
+                string tag = m.Tags[t];
+                if (tag == "Race" || tag == "FullSpeed" || tag == "Tech" || tag == "Dirt" || tag == "Grass" || tag == "Ice" || tag == "Plastic") {
+                    hasSurface = true; break;
+                }
+            }
+            // If it has multiple surface tags, it's not "Primary Surface Only"
+            if (!hasSurface) continue;
         }
-        
-        if (f.remainingSkip > 0) {
-            f.remainingSkip--;
-            continue;
-        }
+
         filtered.InsertLast(m);
-        if (filtered.Length >= limit) break;
+        if (filtered.Length >= requestedCount) break;
     }
+
     return filtered;
 }
 
+void DoTmxSearch() {
+    auto f = State::tmxFilters;
+    State::searchInProgress = true;
+    
+    if (f.CurrentPage < 1) f.CurrentPage = 1;
+
+    // Fetch exactly what the UI limit asks for
+    State::tmxSearchResults = FetchMapsSequential(f, f.ResultLimit, true);
+    
+    State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
+    for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
+    
+    State::searchInProgress = false;
+}
+
 void DoBatchAdd() {
-    if (State::TargetActivity is null || State::SelectedClub is null) return;
+    if (State::TargetActivity is null) return;
     
     string[] toAdd;
     for (uint i = 0; i < State::tmxSearchResults.Length; i++) {
-        if (i < State::tmxSelected.Length && State::tmxSelected[i]) toAdd.InsertLast(State::tmxSearchResults[i].Uid);
+        if (State::tmxSelected[i]) {
+            string uid = State::tmxSearchResults[i].Uid;
+            if (!Nadeo::IsMapUploaded(uid)) {
+                Nadeo::RegisterMap(uid);
+                yield();
+            }
+            toAdd.InsertLast(uid);
+        }
     }
+
     if (toAdd.Length == 0) return;
+
+    // Check Limits
+    uint addedCount = toAdd.Length;
+    if (State::TargetActivity.Type == "campaign" && toAdd.Length > 25) {
+        UI::ShowNotification("Capacity Exceeded", "Adding these maps would exceed the Nadeo Campaign limit of 25. Please remove some maps first or select fewer maps.", vec4(0.8, 0.2, 0.2, 1), 6000);
+        return;
+    } else if (State::TargetActivity.Type == "room" && toAdd.Length > 100) {
+        UI::ShowNotification("Capacity Exceeded", "Adding these maps would exceed the Room limit of 100. Please remove some maps first or select fewer maps.", vec4(0.8, 0.2, 0.2, 1), 6000);
+        return;
+    }
     
-    Notify("Adding " + toAdd.Length + " maps to " + State::TargetActivity.Name + "...");
+    Notify("Appending " + addedCount + " maps to " + State::TargetActivity.Name + "...");
     ApplyBatchToActivity(State::TargetActivity, toAdd);
+    startnew(RefreshActivities);
 }
 
 void ApplyBatchToActivity(Activity@ a, string[]@ uids) {
     if (a is null || State::SelectedClub is null) return;
+    
+    string[] finalUids;
+    for (uint i = 0; i < uids.Length; i++) finalUids.InsertLast(uids[i]);
+
     if (a.Type == "campaign") {
-        API::SetCampaignMaps(State::SelectedClub.Id, a.CampaignId, a.Name, uids);
+        if (finalUids.Length > 25) {
+            finalUids.RemoveRange(25, finalUids.Length - 25);
+            Notify("Nadeo limits Campaigns to 25 maps! List truncated.");
+        }
+        auto current = API::GetCampaignMaps(State::SelectedClub.Id, a.CampaignId);
+        API::SetCampaignMaps(State::SelectedClub.Id, a.CampaignId, a.Name, finalUids, current);
     } else if (a.Type == "room") {
-        API::SetRoomMaps(State::SelectedClub.Id, a.RoomId, uids);
-    }
-}
-
-void DoBulkAudit() {
-    if (State::bulkAuditInProgress) return;
-    State::bulkAuditInProgress = true;
-    State::bulkAuditProgress = 0.0f;
-    State::bulkAuditStatus = "Starting...";
-
-    trace("[Audit] Starting Bulk Audit...");
-    auto subs = Subscriptions::All;
-    if (subs.Length == 0) {
-        State::bulkAuditInProgress = false;
-        return;
-    }
-
-    for (uint i = 0; i < subs.Length; i++) {
-        auto sub = subs[i];
-        State::bulkAuditProgress = float(i) / float(subs.Length);
-        State::bulkAuditStatus = "Checking activity: " + sub.ActivityName + " (" + (i+1) + "/" + subs.Length + ")";
-        
-        trace("[Audit] Processing: " + sub.ActivityName);
-        
-        Activity@ act = null;
-        for (uint j = 0; j < State::ClubActivities.Length; j++) {
-            if (State::ClubActivities[j].Id == sub.ActivityId) {
-                @act = State::ClubActivities[j];
-                break;
-            }
+        if (finalUids.Length > 100) {
+            finalUids.RemoveRange(100, finalUids.Length - 100);
+            Notify("Nadeo limits Rooms to 100 maps! List truncated.");
         }
-
-        if (act is null) {
-            warn("[Audit] Activity " + sub.ActivityId + " not found in current club selection.");
-            continue;
-        }
-
-        auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, false);
-        if (results.Length == 0) continue;
-
-        string[] newUids;
-        for (uint j = 0; j < results.Length; j++) newUids.InsertLast(results[j].Uid);
-
-        for (uint j = 0; j < newUids.Length; j++) {
-            if (!Nadeo::IsMapUploaded(newUids[j])) {
-                Nadeo::RegisterMap(newUids[j]);
-                yield(); 
-            }
-        }
-
-        ApplyBatchToActivity(act, newUids);
-        
-        yield();
-        sleep(2000); 
+        API::SetRoomMaps(State::SelectedClub.Id, a.RoomId, finalUids);
     }
-
-    State::bulkAuditStatus = "Complete!";
-    State::bulkAuditProgress = 1.0f;
-    sleep(3000);
-    State::bulkAuditInProgress = false;
 }

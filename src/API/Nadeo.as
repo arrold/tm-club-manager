@@ -89,13 +89,13 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/edit", data);
     }
 
-    Json::Value@ CreateClubActivity(uint clubId, const string &in name, const string &in type, uint folderId = 0) {
+    Json::Value@ CreateClubActivity(uint clubId, const string &in name, const string &in type, uint folderId = 0, bool active = true) {
         Json::Value@ data = Json::Object();
         data["name"] = name;
         data["activityType"] = type;
         data["folderId"] = folderId;
         data["public"] = true;
-        data["active"] = true;
+        data["active"] = active;
 
         string endpoint = "/folder/create";
         if (type == "campaign") endpoint = "/campaign/create";
@@ -118,6 +118,16 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
+    Json::Value@ MoveActivity(uint clubId, uint activityId, uint newFolderId) {
+        Json::Value@ data = Json::Object();
+        data["folderId"] = newFolderId;
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
+    }
+
+    Json::Value@ DeleteActivity(uint clubId, uint activityId) {
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/delete", Json::Object());
+    }
+
     Json::Value@ SetActivityDetails(uint clubId, uint activityId, const string &in name, bool isPublic, uint itemsCount) {
         Json::Value@ data = Json::Object();
         data["name"] = name;
@@ -138,7 +148,7 @@ namespace API {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId);
     }
 
-    Json::Value@ SetCampaignMaps(uint clubId, uint campaignId, const string &in campaignName, string[]@ mapUids) {
+    Json::Value@ SetCampaignMaps(uint clubId, uint campaignId, const string &in campaignName, string[]@ mapUids, Json::Value@ current = null) {
         Json::Value@ playlist = Json::Array();
         for (uint i = 0; i < mapUids.Length; i++) {
             Json::Value@ entry = Json::Object();
@@ -147,20 +157,42 @@ namespace API {
             playlist.Add(entry);
         }
 
+        Json::Value@ cats = null;
+        if (current !is null) {
+            if (current.HasKey("categories") && current["categories"].GetType() == Json::Type::Array) {
+                @cats = current["categories"];
+            } else if (current.HasKey("campaign") && current["campaign"].HasKey("categories") && current["campaign"]["categories"].GetType() == Json::Type::Array) {
+                @cats = current["campaign"]["categories"];
+            }
+        }
+
         Json::Value@ data = Json::Object();
         data["name"] = campaignName;
         data["playlist"] = playlist;
         data["published"] = true;
 
-        Json::Value@ c = Json::Object();
-        c["name"] = campaignName;
-        c["position"] = 0;
-        c["length"] = int(mapUids.Length);
-        Json::Value@ newCats = Json::Array();
-        newCats.Add(c);
-        data["categories"] = newCats;
+        if (cats !is null && cats.Length > 0) {
+            Json::Value@ newCats = Json::Array();
+            for (uint i = 0; i < cats.Length; i++) {
+                Json::Value@ c = Json::Object();
+                c["name"] = cats[i]["name"];
+                c["position"] = cats[i]["position"];
+                c["length"] = (cats.Length == 1) ? int(mapUids.Length) : int(cats[i]["length"]);
+                newCats.Add(c);
+            }
+            data["categories"] = newCats;
+        } else {
+            // Fallback for new campaigns or missing category data
+            Json::Value@ c = Json::Object();
+            c["name"] = campaignName;
+            c["position"] = 0;
+            c["length"] = int(mapUids.Length);
+            Json::Value@ newCats = Json::Array();
+            newCats.Add(c);
+            data["categories"] = newCats;
+        }
 
-        trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps.");
+        trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps. UIDs: " + string::Join(mapUids, ", "));
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
     }
 

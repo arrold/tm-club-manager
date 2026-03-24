@@ -1,21 +1,23 @@
-// API/TMX.as - Trackmania Exchange API (Zertrov Style)
+// API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    void ThrottleTMX() {
-        sleep(250); 
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CReplayWR.RecordTime%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
+
+    void Notify(const string &in msg) {
+        UI::ShowNotification("Trackmania Club Manager", msg);
     }
 
     Json::Value@ TmxRequest(const string &in url) {
-        ThrottleTMX();
-        Net::HttpRequest req;
-        req.Method = Net::HttpMethod::Get;
+        auto req = Net::HttpRequest();
         req.Url = url;
-        req.Headers['User-Agent'] = "TM_Plugin:BetterClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
-        req.Headers['Accept'] = "application/json";
+        // User-Agent is strictly mandatory for TMX to avoid 403s
+        req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
+        req.Headers["Accept"] = "application/json";
+        req.Method = Net::HttpMethod::Get;
         req.Start();
         while (!req.Finished()) yield();
         if (req.ResponseCode() >= 400) {
-            warn("TMX API Error [" + req.ResponseCode() + "]: " + req.Error() + " (URL: " + url + ")");
+            warn("TMX API Error [" + req.ResponseCode() + "]:  (URL: " + url + ")");
             return null;
         }
         return req.Json();
@@ -26,14 +28,14 @@ namespace TMX {
     }
 
     uint GetTagIdFromName(const string &in name) {
-        string cleaned = name.Trim().ToLower();
         for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
-            if (TMX::TAG_NAMES[i].ToLower() == cleaned) return TMX::TAG_IDS[i];
+            if (TMX::TAG_NAMES[i] == name) return TMX::TAG_IDS[i];
         }
         return 0;
     }
 
     int GetSortEnumValue(int index) {
+        // Stable mapping from REF API.as
         switch (index) {
             case 0:  return 12; // Awards Most
             case 1:  return 11; // Awards Least
@@ -58,50 +60,41 @@ namespace TMX {
     }
 
     string FormatDate(const string &in d) {
-        if (d == "" || d.Contains("-")) return d;
+        if (d == "") return "";
         auto parts = d.Split("/");
         if (parts.Length != 3) return d;
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
-
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25) {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
-        int afterId = 0;
-        if (f.CurrentPage > 1 && f.CurrentPage <= int(f.PageStartingTrackIds.Length)) {
-            afterId = f.PageStartingTrackIds[f.CurrentPage - 1];
-        }
-        if (afterId > 0) params += "&after=" + afterId;
+        if (offset > 0) params += "&skip=" + tostring(offset);
+        // Only use after cursor for 'Newest' sort (enum 10) if desired, but skip/offset is safer for all sorts
+        // if (f.SortPrimary == 3 && f.AfterId > 0) params += "&after=" + tostring(f.AfterId);
 
         if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
-
-        if (f.Vehicle >= 0 && f.Vehicle < int(TMX::VEHICLE_NAMES.Length))
-            params += "&vehicle=" + Net::UrlEncode(TMX::VEHICLE_NAMES[f.Vehicle]);
-
-        // Difficulty: trying 1-6 range (Beginner=1)
+        
+        // Use the first selected difficulty for API filtering
         for (uint i = 0; i < f.Difficulties.Length; i++) {
             if (f.Difficulties[i]) {
-                params += "&difficulty=" + (i + 1);
+                params += "&difficulty=" + tostring(i);
+                break;
             }
         }
 
         if (f.TimeFromMs > 0) params += "&authortimemin=" + tostring(f.TimeFromMs);
         if (f.TimeToMs > 0) params += "&authortimemax=" + tostring(f.TimeToMs);
 
-        // Tags
+        // Tags must be passed as individual &tag= parameters for multiple selection to work on TMX V1/V2 mix
         for (uint i = 0; i < f.IncludeTags.Length; i++) {
             uint tid = GetTagIdFromName(f.IncludeTags[i]);
-            if (tid > 0) params += "&tag=" + tid;
+            if (tid > 0) params += "&tag=" + tostring(tid);
         }
         for (uint i = 0; i < f.ExcludeTags.Length; i++) {
             uint tid = GetTagIdFromName(f.ExcludeTags[i]);
-            if (tid > 0) params += "&etag=" + tid;
+            if (tid > 0) params += "&etag=" + tostring(tid);
         }
-
-        if (f.PrimaryTagOnly) params += "&pri=1";
-        if (f.PrimarySurfaceOnly) params += "&psu=1";
 
         string dFrom = FormatDate(f.UploadedFrom);
         string dTo = FormatDate(f.UploadedTo);
@@ -117,9 +110,32 @@ namespace TMX {
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }
 
-        if (f.InTOTD >= 0) params += "&intotd=" + tostring(f.InTOTD);
-        if (f.InOnlineRecords >= 0) params += "&inonlinerecords=" + tostring(f.InOnlineRecords);
+        if (f.InTOTD == 1) params += "&intotd=1";
+        else if (f.InTOTD == 0) params += "&intotd=0";
+        
+        if (f.InCollection >= 0) {
+            if (f.InCollection == 0) {
+                // Map Collection 0 (Track of the Day) to the functional intotd parameter
+                if (!params.Contains("intotd=")) params += "&intotd=1";
+            } else {
+                params += "&collection=" + tostring(f.InCollection);
+            }
+        }
+        
+        // Workaround for TMX 500 error with intotd=0 (Not TOTD)
+        // Workaround for TMX 500 error: if etag is missing but intotd=0 is present, the API sometimes fails.
+        // However, we should avoid sending an empty etag= if not needed.
+        if (params.Contains("intotd=0") && !params.Contains("&etag=")) params += "&etag=";
 
-        return TmxSearch(params);
+        trace("[TMX] Search Params: " + params);
+        auto json = TmxSearch(params);
+        if (json is null) {
+            warn("[TMX] Search returned null.");
+        } else if (json.GetType() != Json::Type::Array) {
+            warn("[TMX] Search returned non-array: " + Json::Write(json));
+        } else {
+            trace("[TMX] Found " + json.Length + " maps.");
+        }
+        return json;
     }
 }

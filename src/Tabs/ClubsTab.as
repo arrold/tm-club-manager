@@ -81,6 +81,15 @@ class ClubsTab : Tab {
         UI::SameLine();
         if (UI::Button("Create Room")) { State::nextActivityName = "New Room"; showCreateRoomModal = true; }
 
+        UI::Separator();
+
+        if (State::bulkAuditInProgress) {
+            UI::Text("\\$f80" + Icons::Spinner + " " + State::bulkAuditStatus);
+            UI::ProgressBar(State::bulkAuditProgress, vec2(-1, 0), "");
+        } else {
+            if (UI::Button("\\$f80" + Icons::Search + "\\$z Audit All Subscriptions")) startnew(DoBulkAudit);
+        }
+
         HandleModals();
 
         UI::Separator();
@@ -175,8 +184,12 @@ class ClubsTab : Tab {
             if (!a.Public) label += " \\$888" + Icons::Lock;
             if (a.Featured) label += " \\$fd0" + Icons::Star;
             if (Subscriptions::GetByActivity(a.Id) !is null) label += " \\$f80" + Icons::Rss;
+            
+            if (a.AuditDone && (a.AuditAdded.Length > 0 || a.AuditRemoved.Length > 0 || a.AuditOrderMismatch)) {
+                label += " \\$0f0\\$s" + Icons::ExclamationTriangle + " Update Available";
+            }
 
-            nodeOpen = bool(UI::TreeNode(label + "##node"));
+            nodeOpen = bool(UI::TreeNode(label + "###node_" + a.Id));
             if (a.HasMapChanges) {
                 UI::SameLine();
                 UI::Text("\\$f44" + Icons::FloppyO);
@@ -206,13 +219,38 @@ class ClubsTab : Tab {
             }
             UI::EndDisabled();
 
-            // Delete
+            // Move
             UI::SameLine();
-            if (a.PendingDelete) {
-                if (UI::Button("Confirm?")) { startnew(DoDeleteActivity, a); a.PendingDelete = false; }
-                UI::SameLine(); if (UI::Button(Icons::Times + "##cancel_del")) a.PendingDelete = false;
+            if (a.IsMoving) {
+                if (UI::Button(Icons::Times + "##cancel_move")) a.IsMoving = false;
+                UI::SameLine();
+                UI::SetNextItemWidth(200);
+                if (UI::BeginCombo("##move_to", "Select Destination...")) {
+                    if (a.FolderId != 0) {
+                        if (UI::Selectable("Root Folder (None)", false)) {
+                            startnew(DoMoveActivity, MoveAction(a, 0));
+                        }
+                    }
+                    for (uint j = 0; j < items.Length; j++) {
+                        if (items[j].Type == "folder" && items[j].Id != a.Id && items[j].Id != a.FolderId) {
+                            if (UI::Selectable(Icons::FolderOpen + " " + items[j].Name, false)) {
+                                startnew(DoMoveActivity, MoveAction(a, items[j].Id));
+                            }
+                        }
+                    }
+                    UI::EndCombo();
+                }
             } else {
-                if (UI::Button(Icons::Trash + "##del_btn")) a.PendingDelete = true;
+                if (UI::Button(Icons::FolderOpen + "##move_btn")) a.IsMoving = true;
+                
+                // Delete
+                UI::SameLine();
+                if (a.PendingDelete) {
+                    if (UI::Button("Confirm Del?")) { startnew(DoDeleteActivity, a); a.PendingDelete = false; }
+                    UI::SameLine(); if (UI::Button(Icons::Times + "##cancel_del")) a.PendingDelete = false;
+                } else {
+                    if (UI::Button(Icons::Trash + "##del_btn")) a.PendingDelete = true;
+                }
             }
         }
 
@@ -248,6 +286,16 @@ class ClubsTab : Tab {
                 if (UI::Button((a.IsManagingMaps ? Icons::Check : Icons::List) + " Manage Maps##" + a.Id)) a.IsManagingMaps = !a.IsManagingMaps;
                 
                 if (a.IsManagingMaps) {
+                    if (UI::Button("Select Max (Leave 1)##" + a.Id)) {
+                        for (uint i = 1; i < a.Maps.Length; i++) a.Maps[i].PendingDelete = true;
+                        a.HasMapChanges = true;
+                    }
+                    UI::SameLine();
+                    if (UI::Button("Deselect All##" + a.Id)) {
+                        for (uint i = 0; i < a.Maps.Length; i++) a.Maps[i].PendingDelete = false;
+                        a.HasMapChanges = true;
+                    }
+                    
                     if (UI::BeginTable("ManageMapsTable_" + a.Id, 5, UI::TableFlags::Resizable | UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
                         UI::TableSetupColumn("Pos", UI::TableColumnFlags::WidthFixed, 40);
                         UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
@@ -346,9 +394,11 @@ class ClubsTab : Tab {
                     UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
 
                 if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
-                if (sub.Filters.InOnlineRecords == 1) UI::TextDisabled("Flag: My Record Only");
+                if (sub.Filters.InCollection >= 0 && sub.Filters.InCollection < int(TMX::COLLECTION_NAMES.Length))
+                    UI::TextDisabled("Collection: " + TMX::COLLECTION_NAMES[sub.Filters.InCollection]);
                 if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
                 if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
+                UI::TextDisabled("Max Maps: " + sub.MapLimit);
 
                 UI::TreePop();
             }

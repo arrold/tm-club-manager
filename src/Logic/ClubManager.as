@@ -71,21 +71,33 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
 
 void DoCreateCampaign() {
     if (State::SelectedClub is null) return;
-    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "campaign");
+    auto json = API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "campaign", 0, State::nextActivityActive);
+    
+    // Nadeo API bug: campaigns are always created inactive despite the creation flag.
+    if (json !is null && State::nextActivityActive) {
+        uint activityId = 0;
+        if (json.HasKey("activityId")) activityId = uint(json["activityId"]);
+        else if (json.HasKey("id")) activityId = uint(json["id"]);
+        
+        if (activityId > 0) {
+            API::SetActivityStatus(State::SelectedClub.Id, activityId, true);
+        }
+    }
+    
     Notify("Campaign created.");
     startnew(RefreshActivities);
 }
 
 void DoCreateRoom() {
     if (State::SelectedClub is null) return;
-    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "room");
+    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "room", 0, State::nextActivityActive);
     Notify("Room created.");
     startnew(RefreshActivities);
 }
 
 void DoCreateFolder() {
     if (State::SelectedClub is null) return;
-    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "folder");
+    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "folder", 0, State::nextActivityActive);
     Notify("Folder created.");
     startnew(RefreshActivities);
 }
@@ -101,13 +113,26 @@ void DoRenameActivity(ref@ r) {
     Notify("Activity renamed.");
 }
 
+class MoveAction {
+    Activity@ Act;
+    uint FolderId;
+    MoveAction(Activity@ a, uint f) { @Act = a; FolderId = f; }
+}
+
+void DoMoveActivity(ref@ r) {
+    MoveAction@ action = cast<MoveAction>(r);
+    if (action is null || action.Act is null || State::SelectedClub is null) return;
+    API::MoveActivity(State::SelectedClub.Id, action.Act.Id, action.FolderId);
+    action.Act.IsMoving = false;
+    Notify("Activity moved.");
+    startnew(RefreshActivities);
+}
+
 void DoDeleteActivity(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
-    Json::Value@ settings = Json::Object();
-    settings["active"] = false;
-    API::EditClubActivity(State::SelectedClub.Id, a.Id, settings);
-    Notify("Activity deactivated/deleted.");
+    API::DeleteActivity(State::SelectedClub.Id, a.Id);
+    Notify("Activity permanently deleted.");
     startnew(RefreshActivities);
 }
 
@@ -178,6 +203,7 @@ void LoadActivityMaps(ref@ r) {
 
             if (list !is null && list.GetType() == Json::Type::Array) {
                 for (uint i = 0; i < list.Length; i++) {
+                    if (uids.Length >= 25) break; // Nadeo backend sometimes retains ghost maps >25, force clip to game limits
                     auto item = list[i];
                     if (item.HasKey("mapUid")) {
                         uids.InsertLast(string(item["mapUid"]).Trim());
@@ -366,6 +392,11 @@ void DoAuditSubscription(ref@ r) {
     auto sub = Subscriptions::GetByActivity(a.Id);
     if (sub is null) return;
     
+    if (!a.MapsLoaded && !a.LoadingMaps) {
+        startnew(LoadActivityMaps, a);
+    }
+    while (a.LoadingMaps) yield();
+    
     a.IsAuditing = true;
     a.AuditDone = false;
     a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
@@ -483,6 +514,11 @@ void DoSaveMapChanges(ref@ r) {
         }
     }
     
+    if (uids.Length == 0) {
+        Notify("Operation failed: Nadeo requires at least 1 map to remain in the activity!");
+        return;
+    }
+    
     ApplyBatchToActivity(a, uids);
     a.HasMapChanges = false;
     // Don't need to manually reset PendingDelete as LoadActivityMaps will refill from server
@@ -531,4 +567,38 @@ void DoReorderActivity() {
     swapWith.Position = targetPos;
     
     Notify("Activity reordered.");
+}
+
+void DoBulkAudit() {
+    if (State::bulkAuditInProgress) return;
+    State::bulkAuditInProgress = true;
+    State::bulkAuditProgress = 0.0f;
+    
+    auto items = State::ClubActivities;
+    uint total = 0;
+    for (uint i = 0; i < items.Length; i++) {
+        if (Subscriptions::GetByActivity(items[i].Id) !is null) total++;
+    }
+    
+    if (total == 0) {
+        Notify("No subscriptions found to audit.");
+        State::bulkAuditInProgress = false;
+        return;
+    }
+    
+    uint current = 0;
+    for (uint i = 0; i < items.Length; i++) {
+        if (Subscriptions::GetByActivity(items[i].Id) !is null) {
+            State::bulkAuditStatus = "Auditing " + items[i].Name + "...";
+            State::bulkAuditProgress = float(current) / float(total);
+            DoAuditSubscription(items[i]);
+            current++;
+            yield();
+        }
+    }
+    
+    State::bulkAuditStatus = "Bulk Audit Complete!";
+    State::bulkAuditProgress = 1.0f;
+    sleep(2000);
+    State::bulkAuditInProgress = false;
 }
