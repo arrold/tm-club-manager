@@ -107,7 +107,8 @@ namespace TMX {
             int enumVal = GetSortEnumValue(f.SortPrimary);
             if (enumVal >= 0) params += "&order1=" + tostring(enumVal);
         }
-        if (f.SortSecondary >= 0) {
+        // Secondary sort can cause 500 errors with intotd=0, skip it
+        if (f.SortSecondary >= 0 && f.InTOTD != 0) {
             int enumVal = GetSortEnumValue(f.SortSecondary);
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }
