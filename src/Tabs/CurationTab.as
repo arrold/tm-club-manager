@@ -75,14 +75,37 @@ class CurationTab : Tab {
         UI::PopItemWidth();
 
         // Row C: Icon Toggles
-        if (DrawToggle(Icons::Tag + " Primary Tag", f.PrimaryTagOnly)) {
+        uint totalSelected = f.IncludeTags.Length;
+        uint surfaceSelected = 0;
+        for (uint i = 0; i < f.IncludeTags.Length; i++) {
+            if (TMX::ArrayContains(TMX::SURFACE_TAGS, f.IncludeTags[i])) surfaceSelected++;
+        }
+
+        bool tagValid = totalSelected == 1;
+        bool surfValid = surfaceSelected == 1;
+        vec4 highlightColor = vec4(0.2f, 0.6f, 0.2f, 0.8f);
+
+        UI::BeginDisabled(!tagValid);
+        if (DrawToggle(Icons::Tag + " Primary Tag", f.PrimaryTagOnly, tagValid ? highlightColor : vec4(0.18f, 0.42f, 0.72f, 0.8f))) {
             f.PrimaryTagOnly = !f.PrimaryTagOnly;
             if (f.PrimaryTagOnly) f.PrimarySurfaceOnly = false;
         }
+        UI::EndDisabled();
+        if (!tagValid) {
+            UI::SameLine();
+            UI::TextDisabled(" (Select one tag)");
+        }
+
         UI::SameLine();
-        if (DrawToggle(Icons::Leaf + " Primary Surface", f.PrimarySurfaceOnly)) {
+        UI::BeginDisabled(!surfValid);
+        if (DrawToggle(Icons::Leaf + " Primary Surface", f.PrimarySurfaceOnly, surfValid ? highlightColor : vec4(0.18f, 0.42f, 0.72f, 0.8f))) {
             f.PrimarySurfaceOnly = !f.PrimarySurfaceOnly;
             if (f.PrimarySurfaceOnly) f.PrimaryTagOnly = false;
+        }
+        UI::EndDisabled();
+        if (!surfValid) {
+            UI::SameLine();
+            UI::TextDisabled(" (Select one surface tag)");
         }
 
         UI::Separator();
