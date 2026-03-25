@@ -143,6 +143,7 @@ class Activity {
     bool AuditOrderMismatch = false;
     TmxMap[] AuditAdded;
     MapInfo[] AuditRemoved;
+    string[] AuditFullUidList;
 
     Activity() {}
     Activity(Json::Value@ json) {

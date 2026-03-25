@@ -402,6 +402,7 @@ void DoAuditSubscription(ref@ r) {
     a.AuditDone = false;
     a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
     a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
+    a.AuditFullUidList.RemoveRange(0, a.AuditFullUidList.Length);
     a.AuditOrderMismatch = false;
     
     Notify("Auditing subscription for " + a.Name + "...");
@@ -442,6 +443,9 @@ void DoAuditSubscription(ref@ r) {
         }
     }
     
+    // Store the full UID list for the Action step
+    for (uint i = 0; i < results.Length; i++) a.AuditFullUidList.InsertLast(results[i].Uid);
+    
     a.AuditDone = true;
     a.IsAuditing = false;
     Notify("Audit complete for " + a.Name + ". Review the proposed changes.");
@@ -454,26 +458,26 @@ void DoApplyAudit(ref@ r) {
     auto sub = Subscriptions::GetByActivity(a.Id);
     if (sub is null) return;
     
-    // We need to fetch the results again or store the newUid list
-    // Re-calculating newUids from a fresh search to be sure
-    auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, true);
-    if (results.Length == 0) {
-        Notify("Failed to apply audit: Could not re-fetch TMX data.");
+    // Logic Refactor: use the cached AuditFullUidList from the Perform Audit stage
+    if (a.AuditFullUidList.Length == 0) {
+        Notify("Failed to apply audit: No cached TMX data found. Please run the audit again.");
         return;
     }
     
     string[] newUids;
-    for (uint i = 0; i < results.Length; i++) {
-        if (!Nadeo::IsMapUploaded(results[i].Uid)) {
-            Nadeo::RegisterMap(results[i].Uid);
+    for (uint i = 0; i < a.AuditFullUidList.Length; i++) {
+        string uid = a.AuditFullUidList[i];
+        if (!Nadeo::IsMapUploaded(uid)) {
+            Nadeo::RegisterMap(uid);
             yield();
         }
-        newUids.InsertLast(results[i].Uid);
+        newUids.InsertLast(uid);
     }
     
     Notify("Applying audit changes to " + a.Name + "...");
     ApplyBatchToActivity(a, newUids);
     a.AuditDone = false;
+    a.AuditFullUidList.RemoveRange(0, a.AuditFullUidList.Length);
     startnew(LoadActivityMaps, a);
 }
 
@@ -483,6 +487,7 @@ void DoDiscardAudit(ref@ r) {
     a.AuditDone = false;
     a.AuditAdded.RemoveRange(0, a.AuditAdded.Length);
     a.AuditRemoved.RemoveRange(0, a.AuditRemoved.Length);
+    a.AuditFullUidList.RemoveRange(0, a.AuditFullUidList.Length);
 }
 
 class MapAction {
@@ -592,9 +597,13 @@ void DoBulkAudit() {
     uint current = 0;
     for (uint i = 0; i < items.Length; i++) {
         if (Subscriptions::GetByActivity(items[i].Id) !is null) {
-            State::bulkAuditStatus = "Auditing " + items[i].Name + "...";
+            State::bulkAuditStatus = "Syncing " + items[i].Name + "...";
             State::bulkAuditProgress = float(current) / float(total);
             DoAuditSubscription(items[i]);
+            // Sequential Sync: After audit (comparison), immediately apply using the cache
+            if (items[i].AuditFullUidList.Length > 0) {
+                DoApplyAudit(items[i]);
+            }
             current++;
             yield();
         }

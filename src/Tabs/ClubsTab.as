@@ -87,7 +87,7 @@ class ClubsTab : Tab {
             UI::Text("\\$f80" + Icons::Spinner + " " + State::bulkAuditStatus);
             UI::ProgressBar(State::bulkAuditProgress, vec2(-1, 0), "");
         } else {
-            if (UI::Button("\\$f80" + Icons::Search + "\\$z Audit All Subscriptions")) startnew(DoBulkAudit);
+            if (UI::Button("\\$f80" + Icons::Refresh + "\\$z Sync All Subscriptions")) startnew(DoBulkAudit);
             UI::SameLine();
             if (UI::Button(Icons::Trash + " Clean Up Orphaned Subscriptions")) Subscriptions::CleanupOrphans();
         }
