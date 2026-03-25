@@ -31,25 +31,50 @@ class CurationTab : Tab {
     void RenderFilters() {
         auto f = State::tmxFilters;
 
-        // Top Row: Author & Sorting
+        // --- Section 1: Baseline Search Parameters ---
         UI::PushItemWidth(150);
+        f.MapName = UI::InputText("Map Name", f.MapName);
+        UI::SameLine();
         f.AuthorName = UI::InputText("Author", f.AuthorName);
+        UI::SameLine();
+        UI::PushItemWidth(100);
+        f.ResultLimit = uint(UI::InputInt("Maps per Page", int(f.ResultLimit)));
+        if (f.ResultLimit < 1) f.ResultLimit = 1;
+        if (f.ResultLimit > 100) f.ResultLimit = 100;
+        UI::PopItemWidth();
+        UI::PopItemWidth();
+
+        UI::Separator();
+
+        // --- Section 2: Difficulty Selection Row ---
+        UI::TextDisabled("Difficulties:");
+        for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
+            if (DrawToggle(TMX::DIFFICULTY_NAMES[i] + "###TmxDiff_" + i, f.Difficulties[i], vec4(0.2f, 0.6f, 0.2f, 0.8f))) {
+                f.Difficulties[i] = !f.Difficulties[i];
+            }
+            if (i < TMX::DIFFICULTY_NAMES.Length - 1) UI::SameLine();
+        }
+
+        UI::Separator();
+
+        // --- Section 3: Advanced Filtering & Sorting ---
+        RenderTagsSection(); // Row A: Tags (Full Width)
+
+        // Row B: Sorting & TOTD
+        UI::PushItemWidth(150);
+        int currentTotd = (f.InTOTD == 1) ? 1 : (f.InTOTD == 0 ? 2 : 0);
+        int selectionDiff = DrawCombo("Track of the Day", currentTotd, {"Any", "TOTD Only", "Not TOTD"});
+        if (selectionDiff == 1) f.InTOTD = 1;
+        else if (selectionDiff == 2) f.InTOTD = 0;
+        else f.InTOTD = -1;
+        
         UI::SameLine();
         f.SortPrimary = DrawCombo("Primary Sort", f.SortPrimary, TMX::SORT_NAMES);
         UI::SameLine();
         f.SortSecondary = DrawCombo("Secondary Sort", f.SortSecondary, TMX::SORT_NAMES);
         UI::PopItemWidth();
 
-        UI::Separator();
-
-        // Row 2: Results & Quick Toggles
-        UI::PushItemWidth(100);
-        f.ResultLimit = uint(UI::InputInt("Maps per Page", int(f.ResultLimit)));
-        if (f.ResultLimit < 1) f.ResultLimit = 1;
-        if (f.ResultLimit > 100) f.ResultLimit = 100;
-        UI::PopItemWidth();
-
-        UI::SameLine();
+        // Row C: Icon Toggles
         if (DrawToggle(Icons::Tag + " Primary Tag", f.PrimaryTagOnly)) {
             f.PrimaryTagOnly = !f.PrimaryTagOnly;
             if (f.PrimaryTagOnly) f.PrimarySurfaceOnly = false;
@@ -59,30 +84,6 @@ class CurationTab : Tab {
             f.PrimarySurfaceOnly = !f.PrimarySurfaceOnly;
             if (f.PrimarySurfaceOnly) f.PrimaryTagOnly = false;
         }
-
-        UI::Separator();
-
-        // Row 3: Difficulty Filters
-        UI::TextDisabled("Difficulties:");
-        for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
-            if (DrawToggle(TMX::DIFFICULTY_NAMES[i], f.Difficulties[i], vec4(0.2f, 0.6f, 0.2f, 0.8f))) {
-                f.Difficulties[i] = !f.Difficulties[i];
-            }
-            if (i < TMX::DIFFICULTY_NAMES.Length - 1) UI::SameLine();
-        }
-
-        UI::Separator();
-
-        // Row 4: TOTD & Tags
-        UI::PushItemWidth(200);
-        int currentTotd = (f.InTOTD == 1) ? 1 : (f.InTOTD == 0 ? 2 : 0);
-        int selectionDiff = DrawCombo("Track of the Day", currentTotd, {"Any", "TOTD Only", "Not TOTD"});
-        if (selectionDiff == 1) f.InTOTD = 1;
-        else if (selectionDiff == 2) f.InTOTD = 0;
-        else f.InTOTD = -1;
-        UI::PopItemWidth();
-        
-        RenderTagsSection();
 
         UI::Separator();
 

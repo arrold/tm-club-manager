@@ -287,6 +287,7 @@ class TmxMap {
 }
 
 class TmxSearchFilters {
+    string MapName = "";
     string AuthorName = "";
     int Vehicle = -1; 
     string[] IncludeTags = {};
@@ -317,6 +318,7 @@ class TmxSearchFilters {
 
     TmxSearchFilters(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
+        MapName = JsonGetString(json, "MapName");
         AuthorName = JsonGetString(json, "AuthorName");
         Vehicle = JsonGetInt(json, "Vehicle", -1);
         Difficulty = JsonGetInt(json, "Difficulty", -1);
@@ -364,6 +366,7 @@ class TmxSearchFilters {
     TmxSearchFilters@ Clone() {
         SyncTimeMs();
         auto other = TmxSearchFilters();
+        other.MapName = MapName;
         other.AuthorName = AuthorName;
         other.Vehicle = Vehicle;
         other.Difficulty = Difficulty;
@@ -392,6 +395,7 @@ class TmxSearchFilters {
     Json::Value@ ToJson() {
         SyncTimeMs();
         Json::Value@ json = Json::Object();
+        json["MapName"] = MapName;
         json["AuthorName"] = AuthorName;
         json["Vehicle"] = Vehicle;
         json["Difficulty"] = Difficulty;

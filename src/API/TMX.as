@@ -74,6 +74,7 @@ namespace TMX {
         else if (f.InTOTD == 0) params += "&intotd=0";
 
         if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
+        if (f.MapName != "") params += "&name=" + Net::UrlEncode(f.MapName);
         
         if (afterId > 0) params += "&after=" + tostring(afterId);
         if (offset > 0) params += "&skip=" + tostring(offset);

@@ -405,7 +405,7 @@ void DoAuditSubscription(ref@ r) {
     a.AuditOrderMismatch = false;
     
     Notify("Auditing subscription for " + a.Name + "...");
-    trace("Audit filters for " + a.Name + ": Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
+    trace("Audit filters for " + a.Name + ": Name=" + sub.Filters.MapName + ", Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
     
     // Audits should respect the page stored in the subscription filters.
     auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, true);

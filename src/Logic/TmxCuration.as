@@ -6,7 +6,7 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     uint totalNeeded = skipCount + limit;
     
     // Optimization: if no client-side only filters are active, we can jump straight to the offset
-    bool hasClientFilters = f.AuthorName != "" || f.TimeFromMs > 0 || f.TimeToMs > 0;
+    bool hasClientFilters = f.MapName != "" || f.AuthorName != "" || f.TimeFromMs > 0 || f.TimeToMs > 0;
     uint offset = hasClientFilters ? 0 : skipCount;
     uint lastId = 0;
     
@@ -68,6 +68,7 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
         if (m.Uid == "") continue;
 
         // Apply secondary logic filters
+        if (f.MapName != "" && !m.Name.ToLower().Contains(f.MapName.ToLower())) continue;
         if (f.AuthorName != "" && !m.Author.ToLower().Contains(f.AuthorName.ToLower())) continue;
         
         // Difficulty filter (Normalised 1-6)
