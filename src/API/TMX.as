@@ -129,7 +129,7 @@ namespace TMX {
             params += "&collection=" + tostring(f.InCollection);
         }
         
-        trace("[TMX] Search Params: " + params);
+        // trace("[TMX] Search Params: " + params);
         auto json = TmxSearch(params);
         if (json is null) {
             warn("[TMX] Search returned null.");
@@ -137,10 +137,10 @@ namespace TMX {
             if (!(json.GetType() == Json::Type::Object && json.HasKey("Results"))) {
                 warn("[TMX] Search returned unexpected object type: " + json.GetType());
             } else {
-                trace("[TMX] Found " + json["Results"].Length + " maps.");
+                // trace("[TMX] Found " + json["Results"].Length + " maps.");
             }
         } else {
-            trace("[TMX] Found " + json.Length + " maps.");
+            // trace("[TMX] Found " + json.Length + " maps.");
         }
         return json;
     }

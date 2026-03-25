@@ -47,13 +47,6 @@ class Club {
     string Description;
     string Role;
     bool Public;
-    string IconUrl;
-    string VerticalUrl;
-    string BackgroundUrl;
-    string StadiumGrassUrl;
-    string StadiumTerrainUrl;
-    string StadiumLogoUrl;
-
     Club() {}
     Club(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
@@ -67,13 +60,6 @@ class Club {
         Description = JsonGetString(json, "description");
         Role = JsonGetString(json, "role", "Member");
         Public = JsonGetBool(json, "public");
-        
-        IconUrl = JsonGetString(json, "iconUrl");
-        VerticalUrl = JsonGetString(json, "verticalUrl");
-        BackgroundUrl = JsonGetString(json, "backgroundUrl");
-        StadiumGrassUrl = JsonGetString(json, "stadiumGrassUrl");
-        StadiumTerrainUrl = JsonGetString(json, "stadiumTerrainUrl");
-        StadiumLogoUrl = JsonGetString(json, "stadiumLogoUrl");
     }
 }
 

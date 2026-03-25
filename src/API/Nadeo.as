@@ -36,7 +36,7 @@ namespace API {
     /* HTTP Helpers */
 
     Json::Value@ FetchLiveEndpoint(const string &in route) {
-        trace("Fetching: " + route);
+        // trace("Fetching: " + route);
         auto req = NadeoServices::Get("NadeoLiveServices", route);
         req.Start();
         while (!req.Finished()) yield();
@@ -49,7 +49,7 @@ namespace API {
     }
 
     Json::Value@ PostLiveEndpoint(const string &in route, Json::Value@ data) {
-        trace("Posting to: " + route);
+        // trace("Posting to: " + route);
         while (!NadeoServices::IsAuthenticated("NadeoLiveServices")) yield();
         auto req = NadeoServices::Post("NadeoLiveServices", route, Json::Write(data));
         req.Start();
@@ -63,7 +63,7 @@ namespace API {
             warn("API POST Error: " + route + " (null response)");
             return null;
         }
-        trace("API POST Success: " + route + " Response: " + Json::Write(json));
+        // trace("API POST Success: " + route + " Response: " + Json::Write(json));
         return json;
     }
 
@@ -192,7 +192,7 @@ namespace API {
             data["categories"] = newCats;
         }
 
-        trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps. UIDs: " + string::Join(mapUids, ", "));
+        // trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps. UIDs: " + string::Join(mapUids, ", "));
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
     }
 

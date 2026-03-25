@@ -24,12 +24,6 @@ class ClubsTab : Tab {
 
                 if (UI::Selectable(State::MyClubs[i].Name, State::SelectedClub !is null && State::SelectedClub.Id == State::MyClubs[i].Id)) {
                     @State::SelectedClub = State::MyClubs[i];
-                    State::iconUrl = State::SelectedClub.IconUrl;
-                    State::verticalUrl = State::SelectedClub.VerticalUrl;
-                    State::backgroundUrl = State::SelectedClub.BackgroundUrl;
-                    State::grassUrl = State::SelectedClub.StadiumGrassUrl;
-                    State::terrainUrl = State::SelectedClub.StadiumTerrainUrl;
-                    State::logoUrl = State::SelectedClub.StadiumLogoUrl;
                     State::clubTag = State::SelectedClub.Tag;
                     State::clubDescription = State::SelectedClub.Description;
                     State::clubPublic = State::SelectedClub.Public;
@@ -55,8 +49,8 @@ class ClubsTab : Tab {
                 RenderActivityTab();
                 UI::EndTabItem();
             }
-            if (UI::BeginTabItem("Branding & Images")) {
-                RenderBrandingTab();
+            if (UI::BeginTabItem("General Settings")) {
+                RenderGeneralSettingsTab();
                 UI::EndTabItem();
             }
             UI::EndTabBar();
@@ -478,16 +472,25 @@ class ClubsTab : Tab {
         return siblings;
     }
 
-    void RenderBrandingTab() {
-        UI::TextDisabled("General Settings");
+    void RenderGeneralSettingsTab() {
+        UI::TextDisabled("Modify Club Metadata");
+        
+        UI::BeginGroup();
+        UI::SetNextItemWidth(120);
         State::clubTag = UI::InputText("Club Tag", State::clubTag);
+        if (State::clubTag.Length > 5) State::clubTag = State::clubTag.SubStr(0, 5);
+        if (UI::IsItemHovered()) UI::SetTooltip("Max 5 characters");
+        
+        UI::SameLine();
+        UI::SetNextItemWidth(UI::GetContentRegionAvail().x - 100);
         State::clubDescription = UI::InputText("Description", State::clubDescription);
+        if (State::clubDescription.Length > 200) State::clubDescription = State::clubDescription.SubStr(0, 200);
+        if (UI::IsItemHovered()) UI::SetTooltip("Max 200 characters");
+        UI::EndGroup();
+
         State::clubPublic = UI::Checkbox("Public Club", State::clubPublic);
+        
         UI::Separator();
-        UI::TextDisabled("Branding Image URLs");
-        State::iconUrl = UI::InputText("Icon URL", State::iconUrl);
-        State::verticalUrl = UI::InputText("Vertical URL", State::verticalUrl);
-        State::backgroundUrl = UI::InputText("Background URL", State::backgroundUrl);
-        if (UI::Button("Update Branding")) startnew(DoUpdateBranding, null);
+        if (UI::Button(Icons::FloppyO + " Update Settings")) startnew(DoUpdateBranding, null);
     }
 }

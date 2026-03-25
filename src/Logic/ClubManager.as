@@ -382,8 +382,9 @@ void DoUpdateBranding(ref@ r) {
     s["tag"] = State::clubTag;
     s["description"] = State::clubDescription;
     s["public"] = State::clubPublic;
+    
     API::SetClubDetails(State::SelectedClub.Id, s);
-    Notify("Club branding updated.");
+    Notify("Club settings updated.");
 }
 
 void DoAuditSubscription(ref@ r) {

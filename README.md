@@ -37,11 +37,16 @@ A powerful Openplanet plugin for Trackmania (2020) designed to streamline the ma
 *   **NadeoServices** and **NadeoLiveServices** audiences authenticated.
 
 ## **Architecture**
-*   **src/Main.as**: Entry point, UI rendering, and permission handling.
-*   **src/API.as**: Core Nadeo and TMX API wrappers.
-*   **src/Models.as**: Shared data structures for Filters, Subscriptions, and Maps.
-*   **src/UI.as**: Modal windows, activity lists, and search interfaces.
-*   **src/Subscriptions.as**: Logic for persisting and managing Dynamic Curation settings.
+*   **src/Main.as**: Entry point and permission handling.
+*   **src/MainUI.as**: Root UI rendering and tab management.
+*   **src/API/**: Modularized API wrappers for Nadeo Live Services, TMX, and Map Helpers.
+*   **src/Logic/**: Core business logic for audits, map synchronization, and activity management.
+*   **src/Tabs/**: Component-based UI for Clubs, Search, and local map views.
+*   **src/Models.as**: Shared data structures for Clubs, Activities, and Maps.
+*   **src/State.as**: Centralized state management for the plugin.
+
+## **License**
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 *Created by Arrold*

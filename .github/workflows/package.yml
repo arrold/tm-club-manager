@@ -1,0 +1,24 @@
+name: Package Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Package
+        run: |
+          zip -r ClubManager.zip info.toml src/ LICENSE README.md
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ClubManager.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

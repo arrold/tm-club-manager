@@ -16,8 +16,6 @@ namespace State {
     const uint REFRESH_COOLDOWN = 10000; // 10 seconds
 
     // Branding State (Current values for the selected club)
-    string iconUrl, verticalUrl, backgroundUrl;
-    string grassUrl, terrainUrl, logoUrl;
     string clubTag, clubDescription;
     bool clubPublic;
 
