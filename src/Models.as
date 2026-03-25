@@ -1,4 +1,4 @@
-// Models.as - Data Models & JSON Helpers (Zertrov Style)
+// Models.as - Data Models & JSON Helpers
 
 // --- Safe JSON Helpers ---
 

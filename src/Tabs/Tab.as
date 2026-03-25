@@ -1,4 +1,4 @@
-// Tabs/Tab.as - Base class for UI tabs (Zertrov Style)
+// Tabs/Tab.as - Base class for UI tabs
 
 class Tab {
     string tabName;

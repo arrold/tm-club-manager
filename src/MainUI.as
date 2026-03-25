@@ -1,4 +1,4 @@
-// MainUI.as - UI Entry Point (Zertrov Style)
+// MainUI.as - UI Entry Point
 
 namespace CM_UI {
     Tab@[] tabs;

@@ -1,4 +1,4 @@
-// Logic/TmxCuration.as - Sequential TMX fetching and curation helpers (Zertrov Style)
+// Logic/TmxCuration.as - Sequential TMX fetching and curation helpers
 
 TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
     TmxMap[] allResults;

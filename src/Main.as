@@ -13,7 +13,7 @@ void Main() {
     AddAudiences();
     Subscriptions::Load();
     
-    // Initialize UI Tabs (Zertrov Style)
+    // Initialize UI Tabs
     CM_UI::tabs.InsertLast(ClubsTab());
     CM_UI::tabs.InsertLast(CurationTab());
     CM_UI::tabs.InsertLast(LocalMapsTab());

@@ -1,4 +1,4 @@
-// Logic/ClubManager.as - High-level Club management coroutines (Zertrov Style)
+// Logic/ClubManager.as - High-level Club management coroutines
 
 void RefreshClubs() {
     if (State::refreshingClubs) return;

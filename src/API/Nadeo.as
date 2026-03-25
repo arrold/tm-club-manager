@@ -1,4 +1,4 @@
-// API/Nadeo.as - Nadeo Live Services endpoints (Zertrov Style)
+// API/Nadeo.as - Nadeo Live Services endpoints
 
 namespace API {
     /* User & Display Names */

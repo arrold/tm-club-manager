@@ -1,5 +1,5 @@
 // State.as - Global state container to prevent circular dependencies
-// Following the State Container Pattern (Zertrov Style)
+// Following the State Container Pattern
 
 namespace State {
     // Selection State

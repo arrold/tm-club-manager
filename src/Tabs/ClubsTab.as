@@ -1,4 +1,4 @@
-// Tabs/ClubsTab.as - Club Management & Branding View (Zertrov Style)
+// Tabs/ClubsTab.as - Club Management & Branding View
 
 class ClubsTab : Tab {
     ClubsTab() {

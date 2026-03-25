@@ -1,4 +1,4 @@
-// API/Http.as - Low-level network helpers (Zertrov Style)
+// API/Http.as - Low-level network helpers
 
 namespace API {
     /* Nadeo Service Task Helpers */

@@ -1,4 +1,4 @@
-// Logic/GbxReader.as - Manual Gbx header parsing (Zertrov Style)
+// Logic/GbxReader.as - Manual Gbx header parsing
 // This version uses minimal IO features to maximize compatibility.
 
 namespace Gbx {

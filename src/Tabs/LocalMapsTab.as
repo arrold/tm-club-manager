@@ -1,4 +1,4 @@
-// Tabs/LocalMapsTab.as - Local Maps Browser (Zertrov Style)
+// Tabs/LocalMapsTab.as - Local Maps Browser
 
 class LocalMapsTab : Tab {
     bool selectAll = false;

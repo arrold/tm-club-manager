@@ -1,4 +1,4 @@
-// API/NadeoRegistration.as - Nadeo map registration & upload (Zertrov Style)
+// API/NadeoRegistration.as - Nadeo map registration & upload
 
 namespace Nadeo {
     bool IsMapUploaded(const string &in uid) {

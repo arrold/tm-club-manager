@@ -1,4 +1,4 @@
-// Tabs/CurationTab.as - TMX search and subscription curation (Zertrov Style)
+// Tabs/CurationTab.as - TMX search and subscription curation
 
 class CurationTab : Tab {
     CurationTab() {
@@ -31,7 +31,7 @@ class CurationTab : Tab {
     void RenderFilters() {
         auto f = State::tmxFilters;
 
-        // Row 1: High-Density Top Row
+        // Top Row: Author & Sorting
         UI::PushItemWidth(150);
         f.AuthorName = UI::InputText("Author", f.AuthorName);
         UI::SameLine();
@@ -62,7 +62,7 @@ class CurationTab : Tab {
 
         UI::Separator();
 
-        // Row 3: Difficulties (Interactive Row)
+        // Row 3: Difficulty Filters
         UI::TextDisabled("Difficulties:");
         for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) {
             if (DrawToggle(TMX::DIFFICULTY_NAMES[i], f.Difficulties[i], vec4(0.2f, 0.6f, 0.2f, 0.8f))) {
@@ -73,7 +73,7 @@ class CurationTab : Tab {
 
         UI::Separator();
 
-        // Row 4: TOTD & Tags (Ingenious)
+        // Row 4: TOTD & Tags
         UI::PushItemWidth(200);
         int currentTotd = (f.InTOTD == 1) ? 1 : (f.InTOTD == 0 ? 2 : 0);
         int selectionDiff = DrawCombo("Track of the Day", currentTotd, {"Any", "TOTD Only", "Not TOTD"});

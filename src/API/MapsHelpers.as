@@ -1,4 +1,4 @@
-// API/MapsHelpers.as - Map processing utilities (Zertrov Style)
+// API/MapsHelpers.as - Map processing utilities
 
 namespace Maps {
     Json::Value@ GetListFromJson(Json::Value@ json) {
