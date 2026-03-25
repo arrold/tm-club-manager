@@ -4,11 +4,15 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     TmxMap[] allResults;
     uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
     uint totalNeeded = skipCount + limit;
-    uint offset = 0;
+    
+    // Optimization: if no client-side only filters are active, we can jump straight to the offset
+    bool hasClientFilters = f.AuthorName != "" || f.TimeFromMs > 0 || f.TimeToMs > 0;
+    uint offset = hasClientFilters ? 0 : skipCount;
+    uint lastId = 0;
     
     uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50)); // Smaller batches for stability
     while (allResults.Length < totalNeeded) {
-        auto json = TMX::SearchMaps(f, batchSize, offset);
+        auto json = TMX::SearchMaps(f, batchSize, offset, lastId);
         int fetchedCount = 0;
         TmxMap[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
@@ -21,8 +25,15 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
         if (allResults.Length >= totalNeeded) break;
         if (fetchedCount < int(batchSize)) break; // No more results matching filters available
 
-        // Advance the skip pointer by exactly what TMX gave us
-        offset += fetchedCount;
+        // Advance the cursor: use TrackId for modern 'after' pagination,
+        // fallback to offset if we don't have results but haven't reached end
+        if (batch.Length > 0) {
+            lastId = batch[batch.Length - 1].TrackId;
+            offset = 0;
+        } else {
+            offset += fetchedCount;
+        }
+        
         yield(); // Let the UI breathe
     }
     
@@ -98,6 +109,11 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
             }
             if (!found) continue;
         }
+
+        // Author Time Range Filter (Client-side safeguard)
+        uint lengthMs = m.LengthSecs * 1000;
+        if (f.TimeFromMs > 0 && lengthMs < f.TimeFromMs) continue;
+        if (f.TimeToMs > 0 && lengthMs > f.TimeToMs) continue;
 
         filtered.InsertLast(m);
         if (filtered.Length >= requestedCount) break;

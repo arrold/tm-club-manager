@@ -66,7 +66,7 @@ namespace TMX {
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0) {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
         // Priority filters first for TMX V1 stability
@@ -75,14 +75,26 @@ namespace TMX {
 
         if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
         
+        if (afterId > 0) params += "&after=" + tostring(afterId);
         if (offset > 0) params += "&skip=" + tostring(offset);
         
-        // Use the first selected difficulty for API filtering
+        // Optimize "Not TOTD" + "Awards Most" searches which often 500
+        if (f.InTOTD == 0 && f.SortPrimary == 0) {
+            params += "&awardsmin=1";
+        }
+        
+        // Selective difficulty: TMX only supports one value. If multiple are selected, 
+        // we omit it in the API and let FilterTmxResults handle it client-side.
+        uint selectedDiffCount = 0;
+        int singleDiffIdx = -1;
         for (uint i = 0; i < f.Difficulties.Length; i++) {
             if (f.Difficulties[i]) {
-                params += "&difficulty=" + tostring(i);
-                break;
+                selectedDiffCount++;
+                singleDiffIdx = i;
             }
+        }
+        if (selectedDiffCount == 1) {
+            params += "&difficulty=" + tostring(singleDiffIdx);
         }
 
         if (f.TimeFromMs > 0) params += "&authortimemin=" + tostring(f.TimeFromMs);
@@ -107,7 +119,6 @@ namespace TMX {
             int enumVal = GetSortEnumValue(f.SortPrimary);
             if (enumVal >= 0) params += "&order1=" + tostring(enumVal);
         }
-        // Secondary sort can cause 500 errors with intotd=0, skip it
         if (f.SortSecondary >= 0 && f.InTOTD != 0) {
             int enumVal = GetSortEnumValue(f.SortSecondary);
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);

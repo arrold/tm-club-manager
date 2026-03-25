@@ -88,7 +88,10 @@ class ClubsTab : Tab {
             UI::ProgressBar(State::bulkAuditProgress, vec2(-1, 0), "");
         } else {
             if (UI::Button("\\$f80" + Icons::Search + "\\$z Audit All Subscriptions")) startnew(DoBulkAudit);
+            UI::SameLine();
+            if (UI::Button(Icons::Trash + " Clean Up Orphaned Subscriptions")) Subscriptions::CleanupOrphans();
         }
+
 
         HandleModals();
 
@@ -453,6 +456,11 @@ class ClubsTab : Tab {
             }
         } else {
             if (UI::Button(Icons::Search + " Audit Now")) startnew(DoAuditSubscription, a);
+            UI::SameLine();
+            if (UI::Button(Icons::Trash + " Remove Subscription")) {
+                Subscriptions::Remove(a.Id);
+                UI::ShowNotification("Club Manager", "Subscription removed for " + a.Name);
+            }
         }
     }
 

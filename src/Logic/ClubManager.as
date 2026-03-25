@@ -132,6 +132,7 @@ void DoDeleteActivity(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     API::DeleteActivity(State::SelectedClub.Id, a.Id);
+    Subscriptions::Remove(a.Id); // Clean up subscription
     Notify("Activity permanently deleted.");
     startnew(RefreshActivities);
 }

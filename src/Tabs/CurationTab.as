@@ -251,21 +251,28 @@ class CurationTab : Tab {
             if (State::TargetActivity is null) {
                 UI::ShowNotification("Club Manager", "Please select a Target Activity first!");
             } else {
+                auto f = State::tmxFilters;
+                // Recalculate time values from UI inputs before saving
+                f.TimeFromMs = (f.hFrom * 3600000) + (f.mFrom * 60000) + (f.sFrom * 1000);
+                f.TimeToMs = (f.hTo * 3600000) + (f.mTo * 60000) + (f.sTo * 1000);
                 Subscription@ sub = Subscription();
+                sub.ClubId = State::SelectedClub.Id;
                 sub.ActivityId = State::TargetActivity.Id;
                 sub.ActivityName = State::TargetActivity.Name;
-                @sub.Filters = State::tmxFilters.Clone();
+                @sub.Filters = f.Clone();
                 Subscriptions::Add(sub);
+
                 UI::ShowNotification("Club Manager", "Subscription saved for " + State::TargetActivity.Name);
             }
         }
 
-        if (UI::BeginTable("SearchResultTable", 9, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
+        if (UI::BeginTable("SearchResultTable", 10, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
             UI::TableSetupColumn("Select", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("ID", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthStretch);
             UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthStretch);
             UI::TableSetupColumn("Awards", UI::TableColumnFlags::WidthFixed, 60);
+            UI::TableSetupColumn("Warn", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("Length", UI::TableColumnFlags::WidthFixed, 80);
             UI::TableSetupColumn("Difficulty", UI::TableColumnFlags::WidthFixed, 100);
             UI::TableSetupColumn("Tags", UI::TableColumnFlags::WidthStretch);
@@ -285,6 +292,17 @@ class CurationTab : Tab {
                 UI::Text(m.Author);
                 UI::TableNextColumn();
                 UI::Text(tostring(m.AwardCount));
+                UI::TableNextColumn();
+                if (m.SizeWarning != "") {
+                    UI::Text(m.SizeWarning);
+                    if (UI::IsItemHovered()) {
+                        UI::BeginTooltip();
+                        UI::Text("Display Cost: " + m.DisplayCost);
+                        UI::Text("Embedded Items: " + (m.EmbeddedItemsSize / 1024) + " KB");
+                        if (m.ServerSizeExceeded) UI::Text("\\$f00Server Size Limit Exceeded!");
+                        UI::EndTooltip();
+                    }
+                }
                 UI::TableNextColumn();
                 UI::Text(Time::Format(m.LengthSecs * 1000));
                 UI::TableNextColumn();

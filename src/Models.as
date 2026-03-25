@@ -274,6 +274,15 @@ class TmxMap {
 
         UploadedAt = json.HasKey("UploadedAt") ? string(json["UploadedAt"]) : "";
         HasScreenshot = json.HasKey("HasThumbnail") ? bool(json["HasThumbnail"]) : TrackId > 0;
+
+        // Calculate size warnings for club rooms
+        if (ServerSizeExceeded || EmbeddedItemsSize > 4000000 || DisplayCost > 100000) {
+            SizeWarning = "\\$f00" + Icons::ExclamationTriangle;
+        } else if (EmbeddedItemsSize > 2500000 || DisplayCost > 60000) {
+            SizeWarning = "\\$fd0" + Icons::ExclamationTriangle;
+        } else {
+            SizeWarning = "";
+        }
     }
 }
 
@@ -347,7 +356,13 @@ class TmxSearchFilters {
         }
     }
 
+    void SyncTimeMs() {
+        TimeFromMs = (hFrom * 3600000) + (mFrom * 60000) + (sFrom * 1000);
+        TimeToMs = (hTo * 3600000) + (mTo * 60000) + (sTo * 1000);
+    }
+
     TmxSearchFilters@ Clone() {
+        SyncTimeMs();
         auto other = TmxSearchFilters();
         other.AuthorName = AuthorName;
         other.Vehicle = Vehicle;
@@ -355,6 +370,8 @@ class TmxSearchFilters {
         for (uint i = 0; i < Difficulties.Length; i++) other.Difficulties[i] = Difficulties[i];
         other.TimeFromMs = TimeFromMs;
         other.TimeToMs = TimeToMs;
+        other.hFrom = hFrom; other.mFrom = mFrom; other.sFrom = sFrom;
+        other.hTo = hTo; other.mTo = mTo; other.sTo = sTo;
         other.UploadedFrom = UploadedFrom;
         other.UploadedTo = UploadedTo;
         other.SortPrimary = SortPrimary;
@@ -373,6 +390,7 @@ class TmxSearchFilters {
     }
 
     Json::Value@ ToJson() {
+        SyncTimeMs();
         Json::Value@ json = Json::Object();
         json["AuthorName"] = AuthorName;
         json["Vehicle"] = Vehicle;
@@ -382,9 +400,6 @@ class TmxSearchFilters {
         for (uint i = 0; i < Difficulties.Length; i++) diffs.Add(Difficulties[i]);
         json["Difficulties"] = diffs;
 
-        TimeFromMs = (hFrom * 3600000) + (mFrom * 60000) + (sFrom * 1000);
-        TimeToMs = (hTo * 3600000) + (mTo * 60000) + (sTo * 1000);
-        
         json["TimeFromMs"] = TimeFromMs;
         json["TimeToMs"] = TimeToMs;
         json["UploadedFrom"] = UploadedFrom;
@@ -413,6 +428,7 @@ class TmxSearchFilters {
 }
 
 class Subscription {
+    uint ClubId; // For safe cleanup
     uint ActivityId;
     string ActivityName;
     TmxSearchFilters@ Filters;
@@ -423,6 +439,7 @@ class Subscription {
     Subscription() { @Filters = TmxSearchFilters(); }
     Subscription(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
+        ClubId = JsonGetUint(json, "ClubId");
         ActivityId = JsonGetUint(json, "ActivityId");
         ActivityName = JsonGetString(json, "ActivityName");
         @Filters = json.HasKey("Filters") ? TmxSearchFilters(json["Filters"]) : TmxSearchFilters();
@@ -436,6 +453,7 @@ class Subscription {
 
     Json::Value@ ToJson() {
         Json::Value@ json = Json::Object();
+        json["ClubId"] = ClubId;
         json["ActivityId"] = ActivityId;
         json["ActivityName"] = ActivityName;
         json["Filters"] = Filters.ToJson();
@@ -505,6 +523,7 @@ class LocalMap {
     bool IsValidated;
     bool IsUploaded;
     bool Selected = false;
+    string SizeWarning;
 
     LocalMap() {}
     LocalMap(CGameCtnChallengeInfo@ info) {
@@ -516,5 +535,45 @@ class LocalMap {
         IsPlayable = info.IsPlayable;
         // Treat "validated" as "playable/usable" as provided by Fids.
         IsValidated = IsPlayable;
+    }
+}
+
+class FolderNode {
+    string Name;
+    FolderNode@[] Subfolders;
+    LocalMap@[] Maps;
+
+    FolderNode() {}
+    FolderNode(const string &in name) {
+        Name = name;
+    }
+
+    FolderNode@ GetOrCreateSubfolder(const string &in subName) {
+        for (uint i = 0; i < Subfolders.Length; i++) {
+            if (Subfolders[i].Name == subName) return Subfolders[i];
+        }
+        auto node = FolderNode(subName);
+        Subfolders.InsertLast(node);
+        return node;
+    }
+
+    void Sort() {
+        // Sort subfolders by name
+        for (uint i = 0; i < Subfolders.Length; i++) {
+            for (uint j = i + 1; j < Subfolders.Length; j++) {
+                if (Subfolders[i].Name > Subfolders[j].Name) {
+                    auto temp = Subfolders[i]; @Subfolders[i] = Subfolders[j]; @Subfolders[j] = temp;
+                }
+            }
+            Subfolders[i].Sort();
+        }
+        // Sort maps by name
+        for (uint i = 0; i < Maps.Length; i++) {
+            for (uint j = i + 1; j < Maps.Length; j++) {
+                if (Maps[i].Name > Maps[j].Name) {
+                    auto temp = Maps[i]; @Maps[i] = Maps[j]; @Maps[j] = temp;
+                }
+            }
+        }
     }
 }
