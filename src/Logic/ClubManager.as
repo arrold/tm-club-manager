@@ -40,8 +40,67 @@ void RefreshActivities() {
 
     if (State::SelectedClub !is null && State::SelectedClub.Id == clubId) {
         State::ClubActivities = items;
+        if (!State::isInitialised) startnew(RefreshActiveActivities);
     }
     State::refreshingActivities = false;
+}
+
+/* 
+ * Eager Metadata Loading:
+ * Prevents "Zero-State" UI flicker by background-loading map counts for all Active
+ * items immediately upon club selection. This also ensures mirrored rooms correctly
+ * inherit their parent campaign's metadata from the start.
+ */
+void RefreshActiveActivities() {
+    if (State::SelectedClub is null) return;
+    State::isInitialised = true;
+    
+    uint[] toFetch;
+    auto items = State::ClubActivities;
+    for (uint i = 0; i < items.Length; i++) {
+        auto a = items[i];
+        if (a.Type == "folder" || a.Type == "news") continue;
+        
+        // Eager load if active
+        if (a.Active) {
+            if (toFetch.Find(a.Id) < 0) toFetch.InsertLast(a.Id);
+        }
+        
+        // Eager load parent campaign for mirrored rooms (even if parent is inactive)
+        if (a.Type == "room" && a.MirrorCampaignId > 0) {
+            for (uint j = 0; j < items.Length; j++) {
+                if (items[j].Type == "campaign" && items[j].CampaignId == a.MirrorCampaignId) {
+                    if (toFetch.Find(items[j].Id) < 0) toFetch.InsertLast(items[j].Id);
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (toFetch.Length > 0) {
+        startnew(RunEagerMetadataFetch, toFetch);
+    }
+}
+
+void RunEagerMetadataFetch(ref@ r) {
+    uint[]@ ids = cast<uint[]>(r);
+    if (ids is null || State::SelectedClub is null) return;
+    
+    for (uint i = 0; i < ids.Length; i++) {
+        // Find activity in current state (selection may have changed since start)
+        Activity@ a = null;
+        for (uint j = 0; j < State::ClubActivities.Length; j++) {
+            if (State::ClubActivities[j].Id == ids[i]) {
+                @a = State::ClubActivities[j];
+                break;
+            }
+        }
+        
+        if (a !is null && !a.MapsLoaded && !a.LoadingMaps) {
+            startnew(LoadActivityMaps, a);
+            sleep(100); // Throttle API burst
+        }
+    }
 }
 
 void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
@@ -89,9 +148,27 @@ void DoCreateCampaign() {
 
 void DoCreateRoom() {
     if (State::SelectedClub is null) return;
-    API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "room", 0, State::nextActivityActive);
-    Notify("Room created.");
-    startnew(RefreshActivities);
+    auto resp = API::CreateClubActivity(State::SelectedClub.Id, State::nextActivityName, "room", 0, State::nextActivityActive, State::nextRoomMirrorCampaignId);
+    
+    // Response Validation: Ensure the API returned a valid ID
+    uint activityId = 0;
+    if (resp !is null && resp.GetType() == Json::Type::Object) {
+        if (resp.HasKey("activityId")) activityId = uint(resp["activityId"]);
+        else if (resp.HasKey("id")) activityId = uint(resp["id"]);
+    }
+
+    if (activityId > 0) {
+        Notify("Room created successfully (ID: " + activityId + ")");
+        State::nextRoomMirrorCampaignId = 0; // Reset
+        startnew(RefreshActivities);
+    } else {
+        string errorMsg = "Room creation failed on server.";
+        if (resp !is null && resp.GetType() == Json::Type::Array && resp.Length > 0) {
+            errorMsg = string(resp[0]);
+        }
+        Notify("\\$f00Error: " + errorMsg);
+        warn("Room creation failed. Response: " + (resp !is null ? Json::Write(resp) : "null"));
+    }
 }
 
 void DoCreateFolder() {

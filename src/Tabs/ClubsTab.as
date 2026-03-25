@@ -27,6 +27,7 @@ class ClubsTab : Tab {
                     State::clubTag = State::SelectedClub.Tag;
                     State::clubDescription = State::SelectedClub.Description;
                     State::clubPublic = State::SelectedClub.Public;
+                    State::isInitialised = false;
                     startnew(RefreshActivities);
                 }
             }
@@ -84,6 +85,7 @@ class ClubsTab : Tab {
             if (UI::Button("\\$f80" + Icons::Refresh + "\\$z Sync All Subscriptions")) startnew(DoBulkAudit);
             UI::SameLine();
             if (UI::Button(Icons::Trash + " Clean Up Orphaned Subscriptions")) Subscriptions::CleanupOrphans();
+            UI::TextDisabled(Icons::InfoCircle + " Note: Campaign and Room updates may require a manual UI refresh (Shift + Scroll Lock).");
         }
 
 
@@ -141,6 +143,32 @@ class ClubsTab : Tab {
         if (bool(UI::BeginPopupModal("Create Room", UI::WindowFlags::AlwaysAutoResize))) {
             State::nextActivityName = UI::InputText("Room Name", State::nextActivityName);
             State::nextActivityActive = UI::Checkbox("Create as Active", State::nextActivityActive);
+            
+            UI::Separator();
+            UI::Text("Mirror a Campaign (Optional)");
+            string campName = "None";
+            if (State::nextRoomMirrorCampaignId > 0) {
+                for (uint i = 0; i < State::ClubActivities.Length; i++) {
+                    if (State::ClubActivities[i].Type == "campaign" && State::ClubActivities[i].CampaignId == State::nextRoomMirrorCampaignId) {
+                        campName = State::ClubActivities[i].Name;
+                        break;
+                    }
+                }
+            }
+            if (bool(UI::BeginCombo("Campaign link", campName))) {
+                if (UI::Selectable("None", State::nextRoomMirrorCampaignId == 0)) State::nextRoomMirrorCampaignId = 0;
+                for (uint i = 0; i < State::ClubActivities.Length; i++) {
+                    auto c = State::ClubActivities[i];
+                    if (c.Type == "campaign") {
+                        if (UI::Selectable(Icons::Flag + " " + c.Name, State::nextRoomMirrorCampaignId == c.CampaignId)) {
+                            State::nextRoomMirrorCampaignId = c.CampaignId;
+                        }
+                    }
+                }
+                UI::EndCombo();
+            }
+            UI::TextDisabled("If linked, maps will be automatically managed by the campaign.");
+
             if (UI::Button("Create")) { startnew(DoCreateRoom); UI::CloseCurrentPopup(); }
             UI::SameLine(); if (UI::Button("Cancel")) UI::CloseCurrentPopup();
             UI::EndPopup();
@@ -176,7 +204,22 @@ class ClubsTab : Tab {
             if (UI::Button(Icons::Times + "##cancel")) a.IsRenaming = false;
         } else {
             string label = icon + " " + a.Name;
-            if (a.Type == "campaign" || a.Type == "room") label += " (" + a.Maps.Length + " maps)";
+            if (a.Type == "campaign" || a.Type == "room") {
+                uint mapCount = a.Maps.Length;
+                bool isMirrored = a.Type == "room" && a.MirrorCampaignId > 0;
+                
+                if (isMirrored) {
+                    for (uint i = 0; i < State::ClubActivities.Length; i++) {
+                        if (State::ClubActivities[i].Type == "campaign" && State::ClubActivities[i].CampaignId == a.MirrorCampaignId) {
+                            mapCount = State::ClubActivities[i].Maps.Length;
+                            break;
+                        }
+                    }
+                    label += " \\$8f8" + Icons::Link + " (" + mapCount + ")";
+                } else {
+                    label += " (" + mapCount + ")";
+                }
+            }
             if (!a.Active) label = "\\$f44" + Icons::ExclamationCircle + " " + label;
             if (!a.Public) label += " \\$888" + Icons::Lock;
             if (a.Featured) label += " \\$fd0" + Icons::Star;
@@ -280,9 +323,30 @@ class ClubsTab : Tab {
             UI::TextDisabled("Loading content...");
         } else {
             if (a.Type == "campaign" || a.Type == "room") {
-                if (UI::Button((a.IsManagingMaps ? Icons::Check : Icons::List) + " Manage Maps##" + a.Id)) a.IsManagingMaps = !a.IsManagingMaps;
+                bool isMirrored = a.Type == "room" && a.MirrorCampaignId > 0;
                 
-                if (a.IsManagingMaps) {
+                if (isMirrored) {
+                    string campName = "Unknown Campaign";
+                    uint mapCount = 0;
+                    bool parentLoading = false;
+                    for (uint i = 0; i < State::ClubActivities.Length; i++) {
+                        if (State::ClubActivities[i].Type == "campaign" && State::ClubActivities[i].CampaignId == a.MirrorCampaignId) {
+                            campName = State::ClubActivities[i].Name;
+                            mapCount = State::ClubActivities[i].Maps.Length;
+                            parentLoading = State::ClubActivities[i].LoadingMaps;
+                            break;
+                        }
+                    }
+                    if (parentLoading && mapCount == 0) {
+                        UI::Text("\\$8f8" + Icons::Link + " Inherited State: Synchronizing maps from campaign...");
+                    } else {
+                        UI::Text("\\$8f8" + Icons::Link + " Inherited State: Managing " + mapCount + " maps via linked Campaign: " + campName + " (ID: " + a.MirrorCampaignId + ")");
+                    }
+                } else {
+                    if (UI::Button((a.IsManagingMaps ? Icons::Check : Icons::List) + " Manage Maps##" + a.Id)) a.IsManagingMaps = !a.IsManagingMaps;
+                }
+                
+                if (a.IsManagingMaps && !isMirrored) {
                     if (UI::Button("Select Max (Leave 1)##" + a.Id)) {
                         for (uint i = 1; i < a.Maps.Length; i++) a.Maps[i].PendingDelete = true;
                         a.HasMapChanges = true;
@@ -353,7 +417,11 @@ class ClubsTab : Tab {
                 a.Body = UI::InputTextMultiline("Body", a.Body, vec2(0, 150));
                 if (UI::Button(Icons::FloppyO + " Save News")) startnew(DoSaveNews, a);
             }
-            RenderAuditSubscription(a);
+            if (a.Type == "room" && a.MirrorCampaignId > 0) {
+                // Mirrored rooms do not support manual curation or subscriptions
+            } else {
+                RenderAuditSubscription(a);
+            }
         }
     }
 
@@ -422,9 +490,10 @@ class ClubsTab : Tab {
                 if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardAudit, a);
 
                 if (showAuditDetails) {
-                    if (UI::BeginTable("AuditDetails_" + a.Id, 2, UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
+                    if (UI::BeginTable("AuditDetails_" + a.Id, 3, UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
                         UI::TableSetupColumn("Action", UI::TableColumnFlags::WidthFixed, 60);
                         UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
+                        UI::TableSetupColumn("Warn", UI::TableColumnFlags::WidthFixed, 40);
                         UI::TableHeadersRow();
 
                         for (uint i = 0; i < a.AuditAdded.Length; i++) {
@@ -432,17 +501,20 @@ class ClubsTab : Tab {
                             UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0, 0.4f, 0, 0.3f));
                             UI::TableNextColumn(); UI::Text("\\$0f0" + Icons::PlusCircle + " ADD");
                             UI::TableNextColumn(); UI::Text(a.AuditAdded[i].Name);
+                            UI::TableNextColumn(); UI::Text(a.AuditAdded[i].SizeWarning);
                         }
                         for (uint i = 0; i < a.AuditRemoved.Length; i++) {
                             UI::TableNextRow();
                             UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0.4f, 0, 0, 0.3f));
                             UI::TableNextColumn(); UI::Text("\\$f00" + Icons::MinusCircle + " REM");
                             UI::TableNextColumn(); UI::Text(a.AuditRemoved[i].Name);
+                            UI::TableNextColumn(); // No warning for removal
                         }
                         if (a.AuditOrderMismatch && a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0) {
                             UI::TableNextRow();
                             UI::TableNextColumn(); UI::Text("\\$ff0" + Icons::Refresh);
                             UI::TableNextColumn(); UI::Text("Maps will be reordered to match TMX subscription.");
+                            UI::TableNextColumn();
                         }
                         UI::EndTable();
                     }

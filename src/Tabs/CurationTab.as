@@ -108,6 +108,19 @@ class CurationTab : Tab {
             UI::TextDisabled(" (Select one surface tag)");
         }
 
+        UI::SameLine(0, 20);
+        string limitLabel = Icons::ExclamationTriangle + " Room Guardrails: ";
+        vec4 limitColor = vec4(0.2f, 0.2f, 0.2f, 0.4f);
+        if (f.LimitFilter == 1) { limitLabel += "Exclude Red"; limitColor = vec4(0.7f, 0.1f, 0.1f, 0.8f); }
+        else if (f.LimitFilter == 2) { limitLabel += "Exclude Red+Yellow"; limitColor = vec4(0.7f, 0.6f, 0.1f, 0.8f); }
+        else { limitLabel += "None"; }
+
+        if (DrawToggle(limitLabel, f.LimitFilter > 0, limitColor)) {
+            f.LimitFilter = (f.LimitFilter + 1) % 3;
+        }
+        if (UI::IsItemHovered()) UI::SetTooltip("Filter out maps that exceed Nadeo room limits (Display Cost / Item Size)");
+
+
         UI::Separator();
 
         // Row 5: Advanced Ranges (Date & Time)
@@ -241,6 +254,7 @@ class CurationTab : Tab {
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
                     auto a = State::ClubActivities[i];
                     if (a.Type != "campaign" && a.Type != "room") continue;
+                    if (a.Type == "room" && a.MirrorCampaignId > 0) continue; // Cannot manually add to mirrored rooms
                     if (UI::Selectable(a.Name, State::TargetActivity !is null && State::TargetActivity.Id == a.Id)) {
                         @State::TargetActivity = a;
                     }

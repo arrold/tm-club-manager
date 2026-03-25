@@ -14,6 +14,7 @@ namespace State {
     uint lastClubRefresh = 0;
     uint lastActivityRefresh = 0;
     const uint REFRESH_COOLDOWN = 10000; // 10 seconds
+    bool isInitialised = false; // Tracks eager loading for the current club session
 
     // Branding State (Current values for the selected club)
     string clubTag, clubDescription;
@@ -40,4 +41,5 @@ namespace State {
     bool nextActivityActive = true;
     uint[] reorderIds;
     uint64 lastActionTime = 0;
+    uint nextRoomMirrorCampaignId = 0;
 }

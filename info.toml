@@ -2,7 +2,7 @@
 name = "Club Manager"
 author = "Arrold"
 category = "Tools"
-version = "0.1.0"
+version = "0.0.1"
 site = "https://github.com/Arrold/tm-club-manager"
 
 [script]

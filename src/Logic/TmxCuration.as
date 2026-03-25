@@ -129,6 +129,16 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
         if (f.TimeFromMs > 0 && lengthMs < f.TimeFromMs) continue;
         if (f.TimeToMs > 0 && lengthMs > f.TimeToMs) continue;
 
+        // Multi-State Limit Filter Guardrails
+        if (f.LimitFilter >= 1) {
+            // State 1: Filter out Red Warning Maps
+            if (m.ServerSizeExceeded || m.EmbeddedItemsSize > 4000000 || m.DisplayCost > 12000) continue;
+        }
+        if (f.LimitFilter >= 2) {
+            // State 2: Filter out Yellow Warning Maps (and Red already filtered above)
+            if (m.EmbeddedItemsSize > 1000000 || m.DisplayCost > 8000) continue;
+        }
+
         filtered.InsertLast(m);
         if (filtered.Length >= requestedCount) break;
     }
@@ -185,6 +195,10 @@ void DoBatchAdd() {
 
 void ApplyBatchToActivity(Activity@ a, string[]@ uids) {
     if (a is null || State::SelectedClub is null) return;
+    if (a.Type == "room" && a.MirrorCampaignId > 0) {
+        warn("Attempted to write maps to mirrored room " + a.Id + ". Operation cancelled.");
+        return;
+    }
     
     string[] finalUids;
     for (uint i = 0; i < uids.Length; i++) finalUids.InsertLast(uids[i]);

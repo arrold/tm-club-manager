@@ -89,7 +89,7 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/edit", data);
     }
 
-    Json::Value@ CreateClubActivity(uint clubId, const string &in name, const string &in type, uint folderId = 0, bool active = true) {
+    Json::Value@ CreateClubActivity(uint clubId, const string &in name, const string &in type, uint folderId = 0, bool active = true, uint campaignId = 0) {
         Json::Value@ data = Json::Object();
         data["name"] = name;
         data["activityType"] = type;
@@ -105,12 +105,19 @@ namespace API {
             data["region"] = "eu-west";
             data["maxPlayersPerServer"] = 32;
             data["script"] = "TrackMania/TM_TimeAttack_Online.Script.txt";
-            data["maps"] = Json::Array();
             data["settings"] = Json::Array();
             data["password"] = 0;
             data["scalable"] = 1;
+            
+            if (campaignId > 0) {
+                data["campaignId"] = int(campaignId);
+                // Payload Sanitisation: Omit 'maps' for mirrored rooms as per API requirements
+            } else {
+                data["maps"] = Json::Array();
+            }
         }
 
+        // trace("CreateClubActivity Payload: " + Json::Write(data));
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + endpoint, data);
     }
 
@@ -224,6 +231,8 @@ namespace API {
         data["region"] = room.HasKey("region") ? string(room["region"]) : "eu-west";
         data["password"] = room.HasKey("password") ? (bool(room["password"]) ? 1 : 0) : 0;
         
+        if (room.HasKey("campaignId")) data["campaignId"] = JsonGetUint(room, "campaignId");
+
         if (room.HasKey("maps") && room["maps"].GetType() == Json::Type::Array) {
             data["maps"] = room["maps"];
         } else {

@@ -103,6 +103,7 @@ class Activity {
     uint CampaignId = 0;
     string MirroringCampaignName = "";
     uint RoomId = 0;
+    uint MirrorCampaignId = 0;
     
     MapInfo[] Maps;
 
@@ -165,6 +166,7 @@ class Activity {
         } else if (Type == "room") {
             RoomId = JsonGetUint(json, "roomId");
             if (RoomId == 0) RoomId = Id; // fallback
+            MirrorCampaignId = JsonGetUint(json, "campaignId");
         }
     }
 }
@@ -262,13 +264,13 @@ class TmxMap {
         UploadedAt = json.HasKey("UploadedAt") ? string(json["UploadedAt"]) : "";
         HasScreenshot = json.HasKey("HasThumbnail") ? bool(json["HasThumbnail"]) : TrackId > 0;
 
-        // Calculate size warnings for club rooms
-        if (ServerSizeExceeded || EmbeddedItemsSize > 4000000 || DisplayCost > 100000) {
-            SizeWarning = "\\$f00" + Icons::ExclamationTriangle;
-        } else if (EmbeddedItemsSize > 2500000 || DisplayCost > 60000) {
-            SizeWarning = "\\$fd0" + Icons::ExclamationTriangle;
+        // Calculate size warnings based on strict user-defined thresholds
+        if (ServerSizeExceeded || EmbeddedItemsSize > 4000000 || DisplayCost > 12000) {
+            SizeWarning = "\\$f00" + Icons::ExclamationTriangle; // RED (Critical)
+        } else if (EmbeddedItemsSize > 1000000 || DisplayCost > 8000) {
+            SizeWarning = "\\$fd0" + Icons::ExclamationTriangle; // YELLOW (Caution)
         } else {
-            SizeWarning = "";
+            SizeWarning = ""; // GREEN (Safe)
         }
     }
 }
@@ -299,6 +301,7 @@ class TmxSearchFilters {
     int CurrentPage = 1;
     bool PrimaryTagOnly = false;
     bool PrimarySurfaceOnly = false;
+    int LimitFilter = 0; // 0=None, 1=Filter Red, 2=Filter Yellow+Red
     uint ResultLimit = 25;
 
     TmxSearchFilters() {}
@@ -327,6 +330,7 @@ class TmxSearchFilters {
         HideOversized = JsonGetBool(json, "HideOversized");
         PrimaryTagOnly = JsonGetBool(json, "PrimaryTagOnly");
         PrimarySurfaceOnly = JsonGetBool(json, "PrimarySurfaceOnly");
+        LimitFilter = JsonGetInt(json, "LimitFilter", 0);
         ResultLimit = JsonGetUint(json, "ResultLimit", 25);
         CurrentPage = JsonGetInt(json, "CurrentPage", 1);
 
@@ -372,6 +376,7 @@ class TmxSearchFilters {
         other.HideOversized = HideOversized;
         other.PrimaryTagOnly = PrimaryTagOnly;
         other.PrimarySurfaceOnly = PrimarySurfaceOnly;
+        other.LimitFilter = LimitFilter;
         other.ResultLimit = ResultLimit;
         other.CurrentPage = CurrentPage;
         for (uint i = 0; i < IncludeTags.Length; i++) other.IncludeTags.InsertLast(IncludeTags[i]);
@@ -403,6 +408,7 @@ class TmxSearchFilters {
         json["HideOversized"] = HideOversized;
         json["PrimaryTagOnly"] = PrimaryTagOnly;
         json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
+        json["LimitFilter"] = LimitFilter;
         json["ResultLimit"] = ResultLimit;
         json["CurrentPage"] = CurrentPage;
         
