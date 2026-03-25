@@ -12,21 +12,7 @@ CGameCtnChallengeInfo@ TryGetMapInfo(const string &in fidsPath) {
     return cast<CGameCtnChallengeInfo>(nod);
 }
 
-// #region agent log
-void DebugNDJSON(const string &in runId, const string &in hypothesisId, const string &in location, const string &in message, const string &in dataJson) {
-    IO::File logFile;
-    logFile.Open("c:/Users/simon/repos/tm/plugins/tm-club-manager/debug-d1d6a7.log", IO::FileMode::Append);
-    uint64 ts = Time::Now;
-    string line = "{\"sessionId\":\"d1d6a7\",\"runId\":\"" + runId +
-        "\",\"hypothesisId\":\"" + hypothesisId +
-        "\",\"location\":\"" + location +
-        "\",\"message\":\"" + message +
-        "\",\"data\":" + dataJson +
-        ",\"timestamp\":" + tostring(ts) + "}";
-    logFile.WriteLine(line);
-    logFile.Close();
-}
-// #endregion
+
 
 string ExtractLeafPath(const string &in fullPath) {
     // Handle mixed separators by splitting twice.
@@ -58,19 +44,16 @@ void RefreshLocalMaps() {
     State::refreshingLocalMaps = true;
     State::LocalMaps.RemoveRange(0, State::LocalMaps.Length);
 
-    // Truncate debug log at start of refresh
-    IO::File logTruncate;
-    logTruncate.Open("c:/Users/simon/repos/tm/plugins/tm-club-manager/debug-d1d6a7.log", IO::FileMode::Write);
-    logTruncate.Close();
+
 
     string mapsDir = IO::FromUserGameFolder("Maps/");
     string mapsDirNorm = mapsDir.Replace("\\", "/");
     if (!mapsDirNorm.EndsWith("/")) mapsDirNorm += "/";
     
-    trace("[Local] Indexing maps in directory: " + mapsDir);
+    // trace("[Local] Indexing maps in directory: " + mapsDir);
     
     array<string> files = IO::IndexFolder(mapsDir, true);
-    trace("[Local] IO::IndexFolder found " + files.Length + " files.");
+    // trace("[Local] IO::IndexFolder found " + files.Length + " files.");
     
     uint mapGbxCount = 0;
     uint fidsValidated = 0;
@@ -96,7 +79,6 @@ void RefreshLocalMaps() {
             // Primary Strategy: Manual Gbx Parsing (Fast & Reliable)
             auto header = Gbx::ReadHeader(absPath);
             if (header !is null && header.Uid != "") {
-                if (mapGbxCount < 5) trace("[Local] Parsed: " + relPath + " (UID: " + header.Uid + ", Validated: " + header.IsValidated + ")");
                 LocalMap@ m = LocalMap();
                 m.Uid = header.Uid;
                 m.Filename = "Maps/" + relPath; // Clean relative path
@@ -107,7 +89,6 @@ void RefreshLocalMaps() {
                 manualParsed++;
                 if (m.IsValidated) manualValidated++;
                 State::LocalMaps.InsertLast(m);
-                if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Manual Gbx): " + m.Name);
             } else {
                 // Secondary Strategy: Fids as Fallback
                 string fidsPath = "Maps/" + relPath;
@@ -118,10 +99,6 @@ void RefreshLocalMaps() {
                     m.Name = GetDisplayNameFromFilename(m.Filename);
                     if (m.IsValidated) fidsValidated++;
                     State::LocalMaps.InsertLast(m);
-                    if (State::LocalMaps.Length == 1) trace("[Local] Indexed first map (Fids): " + info.Name);
-                } else {
-                    // Trace why we skipped this .Map.Gbx
-                    if (mapGbxCount < 10) trace("[Local] Skipped non-parsed map: " + relPath);
                 }
             }
         }
@@ -143,7 +120,7 @@ void RefreshLocalMaps() {
         }
     }
 
-    print("[Local] Indexed " + State::LocalMaps.Length + " maps.");
+    // print("[Local] Indexed " + State::LocalMaps.Length + " maps.");
 
     // Final "validated" pass: only show maps that are already uploaded/registered on Nadeo.
     uint serverValidated = 0;
@@ -172,15 +149,7 @@ void RefreshLocalMaps() {
         if (i % 10 == 0) yield();
     }
 
-    // #region agent log
-    DebugNDJSON("post-fix-3", "LocalMapsValidation", "LocalMaps.as:RefreshLocalMaps", "Local map validation counters",
-        "{\"total\":" + tostring(State::LocalMaps.Length) +
-        ",\"fidsValidated\":" + tostring(fidsValidated) +
-        ",\"manualParsed\":" + tostring(manualParsed) +
-        ",\"manualValidated\":" + tostring(manualValidated) +
-        ",\"serverValidated\":" + tostring(serverValidated) +
-        "}");
-    // #endregion
+
     State::refreshingLocalMaps = false;
 }
 
@@ -196,7 +165,7 @@ void DoAddLocalMap(ref@ r) {
     if (m is null || State::SelectedClub is null || State::TargetActivity is null) return;
 
     if (!State::TargetActivity.MapsLoaded && !State::TargetActivity.LoadingMaps) {
-        trace("DoAddLocalMap: Loading existing maps for " + State::TargetActivity.Name + " first...");
+        // trace("DoAddLocalMap: Loading existing maps for " + State::TargetActivity.Name + " first...");
         LoadActivityMaps(State::TargetActivity);
     }
 
@@ -209,7 +178,7 @@ void DoAddLocalMap(ref@ r) {
         yield();
     }
 
-    trace("[LocalMaps] Immediate Add: Adding " + m.Uid + " to " + State::TargetActivity.Name);
+    // trace("[LocalMaps] Immediate Add: Adding " + m.Uid + " to " + State::TargetActivity.Name);
     
     // 1. Prepare new UID list from current in-memory maps (buffered or not)
     string[] uids;
@@ -242,7 +211,7 @@ void DoAddSelectedLocalMaps() {
     
     auto a = State::TargetActivity;
     if (!a.MapsLoaded && !a.LoadingMaps) {
-        trace("DoAddSelectedLocalMaps: Loading existing maps first...");
+        // trace("DoAddSelectedLocalMaps: Loading existing maps first...");
         LoadActivityMaps(a);
     }
 
@@ -269,7 +238,7 @@ void DoAddSelectedLocalMaps() {
     
     if (count > 0) {
         if (a.Id != 0xFFFFFFFF) {
-            trace("[LocalMaps] Immediate Bulk Add: Committing " + count + " maps to " + a.Name);
+            // trace("[LocalMaps] Immediate Bulk Add: Committing " + count + " maps to " + a.Name);
             ApplyBatchToActivity(a, uids);
             a.HasMapChanges = false;
             UI::ShowNotification("Club Manager", "Successfully added " + count + " maps to " + a.Name, vec4(0, 1, 0, 1));

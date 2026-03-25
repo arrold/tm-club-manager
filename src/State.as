@@ -28,8 +28,7 @@ namespace State {
     bool bulkAuditInProgress = false;
     string bulkAuditStatus = "";
     float bulkAuditProgress = 0.0f;
-    Activity@ batchTargetActivity;
-    string manualClubId = "";
+
 
     // Local Maps State
     LocalMap@[] LocalMaps;

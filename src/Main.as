@@ -18,7 +18,7 @@ void Main() {
     CM_UI::tabs.InsertLast(CurationTab());
     CM_UI::tabs.InsertLast(LocalMapsTab());
     
-    trace("Club Manager Loaded (Modular Architecture)");
+    // trace("Club Manager Loaded (Modular Architecture)");
 }
 
 bool notifiedPermissionsMissing = false;

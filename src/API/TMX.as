@@ -66,6 +66,14 @@ namespace TMX {
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
+/*
+ * Advanced TMX Search:
+ * Maps the complex TmxSearchFilters into a string of URL parameters for the TMX API.
+ * Handles the "Multi-State Tag Grid" logic:
+ * - IncludeTags: maps that MUST have these tags.
+ * - ExcludeTags: maps that MUST NOT have these tags.
+ * Also implements guardrails for "Awards Most" sorting to prevent 500 errors on the TMX side.
+ */
     Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         

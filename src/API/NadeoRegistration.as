@@ -26,12 +26,12 @@ namespace Nadeo {
         auto dfm = cma.DataFileMgr;
         auto userId = cma.UserMgr.Users[0].Id;
 
-        trace("Registering map " + uid + " with Nadeo...");
+        // trace("Registering map " + uid + " with Nadeo...");
         auto task = dfm.Map_NadeoServices_Register(userId, uid);
         while (task.IsProcessing) yield();
 
         if (task.HasSucceeded) {
-            print("Map registered successfully: " + uid);
+            // print("Map registered successfully: " + uid);
             return true;
         }
 

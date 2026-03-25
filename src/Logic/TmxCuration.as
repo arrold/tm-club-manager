@@ -1,5 +1,12 @@
 // Logic/TmxCuration.as - Sequential TMX fetching and curation helpers
 
+/*
+ * Sequential TMX Fetching:
+ * TMX API (V1) has stability issues with large offsets. This function implements 
+ * a "cursor-based" sequential scan using TrackId (afterId) to reliably page through 
+ * results. It also handles client-side filtering for attributes TMX cannot 
+ * natively filter (e.g., precise time ranges or multi-tag combinations).
+ */
 TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
     TmxMap[] allResults;
     uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
@@ -45,10 +52,16 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
         }
     }
     
-    trace("[TMX] Scan complete. Found " + allResults.Length + " maps total. Returning page offset " + skipCount);
+    // trace("[TMX] Scan complete. Found " + allResults.Length + " maps total. Returning page offset " + skipCount);
     return pageResults;
 }
 
+/*
+ * Client-Side Result Filtering:
+ * Applies secondary validation logic to TMX search results. 
+ * This includes multi-difficulty matching, primary surface/tag isolation, 
+ * and author time range validation. 
+ */
 TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requestedCount, int&out fetchedCount) {
     TmxMap[] filtered;
     fetchedCount = 0;

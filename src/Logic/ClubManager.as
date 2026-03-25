@@ -5,24 +5,23 @@ void RefreshClubs() {
     State::refreshingClubs = true;
     State::lastClubRefresh = Time::Now;
 
-    trace("Refreshing clubs...");
+    // trace("Refreshing clubs...");
     Club[] items;
 
     auto resp = API::GetMyClubs(100, 0);
     if (resp !is null && resp.HasKey("clubList")) {
         auto list = resp["clubList"];
-        trace("Raw API Result: " + list.Length + " clubs found.");
+        // trace("Raw API Result: " + list.Length + " clubs found.");
         for (uint i = 0; i < list.Length; i++) {
             Club c(list[i]);
             if (c.Id != 0) items.InsertLast(c);
-            else trace("Club ignored due to empty ID: " + (list[i].HasKey("name") ? string(list[i]["name"]) : "unknown"));
         }
     } else {
         warn("API Response invalid or null for RefreshClubs.");
     }
 
     State::MyClubs = items;
-    print("Loaded " + State::MyClubs.Length + " clubs.");
+    // print("Loaded " + State::MyClubs.Length + " clubs.");
     State::refreshingClubs = false;
 }
 
@@ -31,7 +30,7 @@ void RefreshActivities() {
     State::refreshingActivities = true;
     uint clubId = State::SelectedClub.Id;
     
-    trace("Refreshing activities for club " + clubId);
+    // trace("Refreshing activities for club " + clubId);
     Activity[] items;
     FetchActivitiesForStatus(clubId, true, items);
     
@@ -57,7 +56,7 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
             for (uint j = 0; j < State::ClubActivities.Length; j++) {
                 if (State::ClubActivities[j].Id == a.Id && State::ClubActivities[j].HasMapChanges) {
                     @toAdd = State::ClubActivities[j];
-                    trace("Preserving buffered activity: " + toAdd.Name);
+                    // trace("Preserving buffered activity: " + toAdd.Name);
                     break;
                 }
             }
@@ -183,7 +182,7 @@ void LoadActivityMaps(ref@ r) {
     
     a.LoadingMaps = true;
     if (a.HasMapChanges) {
-        trace("LoadActivityMaps: " + a.Name + " has unsaved changes, skipping reload.");
+        // trace("LoadActivityMaps: " + a.Name + " has unsaved changes, skipping reload.");
         a.LoadingMaps = false;
         a.MapsLoaded = true;
         return;
@@ -194,7 +193,7 @@ void LoadActivityMaps(ref@ r) {
 
     if (a.Type == "campaign") {
         auto json = API::GetCampaignMaps(clubId, a.CampaignId);
-        trace("GetCampaignMaps(" + a.CampaignId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
+        // trace("GetCampaignMaps(" + a.CampaignId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
         if (json !is null) {
             a.CampaignId = JsonGetUint(json, "campaignId", a.CampaignId);
             a.Name = Text::StripFormatCodes(JsonGetString(json, "name", a.Name));
@@ -214,7 +213,7 @@ void LoadActivityMaps(ref@ r) {
         }
     } else if (a.Type == "room") {
         auto json = API::GetClubRoom(clubId, a.RoomId);
-        trace("GetClubRoom(" + a.RoomId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
+        // trace("GetClubRoom(" + a.RoomId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
         if (json !is null) {
             // Check if this room is mirroring a campaign
             uint campaignId = 0;
@@ -227,7 +226,7 @@ void LoadActivityMaps(ref@ r) {
             
             Json::Value@ list = null;
             if (campaignId > 0) {
-                trace("Room " + a.Id + " is mirroring Campaign ID " + campaignId + ". Fetching campaign maps.");
+                // trace("Room " + a.Id + " is mirroring Campaign ID " + campaignId + ". Fetching campaign maps.");
                 uint campaignActivityId = 0;
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
                     if (State::ClubActivities[i].Type == "campaign" && State::ClubActivities[i].CampaignId == campaignId) {
@@ -241,7 +240,7 @@ void LoadActivityMaps(ref@ r) {
                     @list = GetMapListFromJson(campJson);
                     if (list is null && campJson.HasKey("campaign")) @list = GetMapListFromJson(campJson["campaign"]);
                 } else {
-                    trace("Could not find campaign activity for mirroring campaignId " + campaignId);
+                    // trace("Could not find campaign activity for mirroring campaignId " + campaignId);
                 }
             }
 
@@ -263,9 +262,9 @@ void LoadActivityMaps(ref@ r) {
         }
     }
 
-    trace("Found " + uids.Length + " map UIDs for " + a.Name);
+    // trace("Found " + uids.Length + " map UIDs for " + a.Name);
     if (uids.Length > 0) {
-        trace("Fetching metadata for " + uids.Length + " maps...");
+        // trace("Fetching metadata for " + uids.Length + " maps...");
         
         // Process in batches of 100 (API limit)
         for (uint i = 0; i < uids.Length; i += 100) {
@@ -329,7 +328,7 @@ void LoadActivityMaps(ref@ r) {
         }
         
         if (authorIds.Length > 0) {
-            trace("Resolving " + authorIds.Length + " author names...");
+            // trace("Resolving " + authorIds.Length + " author names...");
             auto resolvedNames = API::GetDisplayNames(authorIds);
             for (uint i = 0; i < a.Maps.Length; i++) {
                 int idx = authorIds.Find(a.Maps[i].AuthorWebServicesId);
@@ -342,7 +341,7 @@ void LoadActivityMaps(ref@ r) {
 
     a.MapsLoaded = true;
     a.LoadingMaps = false;
-    trace("Finished loading " + a.Maps.Length + " maps for " + a.Name);
+    // trace("Finished loading " + a.Maps.Length + " maps for " + a.Name);
 }
 
 Json::Value@ GetMapListFromJson(Json::Value@ json) {
@@ -407,7 +406,7 @@ void DoAuditSubscription(ref@ r) {
     a.AuditOrderMismatch = false;
     
     Notify("Auditing subscription for " + a.Name + "...");
-    trace("Audit filters for " + a.Name + ": Name=" + sub.Filters.MapName + ", Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
+    // trace("Audit filters for " + a.Name + ": Name=" + sub.Filters.MapName + ", Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
     
     // Audits should respect the page stored in the subscription filters.
     auto results = FetchMapsSequential(sub.Filters, sub.MapLimit, true);
@@ -515,7 +514,7 @@ void DoSaveMapChanges(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     
-    trace("DoSaveMapChanges: committing changes for " + a.Name);
+    // trace("DoSaveMapChanges: committing changes for " + a.Name);
     string[] uids;
     for (uint i = 0; i < a.Maps.Length; i++) {
         if (!a.Maps[i].PendingDelete) {
@@ -578,6 +577,13 @@ void DoReorderActivity() {
     Notify("Activity reordered.");
 }
 
+/* 
+ * Sync All Workflow:
+ * Iterates through all activities in the current club that have a TMX subscription.
+ * Performs a sequential audit (fetching latest TMX results) and immediately applies 
+ * the changes if an audit cache is generated. This allows power-users to sync 
+ * their entire club curation with one click.
+ */
 void DoBulkAudit() {
     if (State::bulkAuditInProgress) return;
     State::bulkAuditInProgress = true;

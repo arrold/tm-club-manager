@@ -14,7 +14,7 @@ namespace Subscriptions {
         string path = GetStoragePath();
         if (!IO::FileExists(path)) {
             Loaded = true;
-            trace("Subscriptions file not found at " + path);
+            // trace("Subscriptions file not found at " + path);
             return;
         }
 
@@ -28,7 +28,7 @@ namespace Subscriptions {
             }
         }
         Loaded = true;
-        trace("Loaded " + All.Length + " subscriptions from " + path);
+        // trace("Loaded " + All.Length + " subscriptions from " + path);
     }
 
     void Save() {
@@ -37,7 +37,7 @@ namespace Subscriptions {
             json.Add(All[i].ToJson());
         }
         Json::ToFile(GetStoragePath(), json);
-        trace("Saved " + All.Length + " subscriptions.");
+        // trace("Saved " + All.Length + " subscriptions.");
     }
 
     Subscription@ GetByActivity(uint activityId) {
@@ -60,7 +60,7 @@ namespace Subscriptions {
         } else {
             All.InsertLast(sub);
         }
-        trace("Subscription added/updated for " + sub.ActivityName + " (ID: " + sub.ActivityId + ", Page: " + sub.Filters.CurrentPage + ")");
+        // trace("Subscription added/updated for " + sub.ActivityName + " (ID: " + sub.ActivityId + ", Page: " + sub.Filters.CurrentPage + ")");
         Save();
     }
 
@@ -83,7 +83,7 @@ namespace Subscriptions {
         uint removed = 0;
         uint currentClubId = State::SelectedClub.Id;
         
-        for (int i = int(All.Length) - 1; i >= 0; i--) {
+        for (int i = /* print(All.Length) */ int(All.Length) - 1; i >= 0; i--) {
             // Only clean up subscriptions belonging to the current club
             if (All[i].ClubId != currentClubId) continue;
 
@@ -95,7 +95,7 @@ namespace Subscriptions {
                 }
             }
             if (!found) {
-                trace("Removing orphaned subscription for activity " + All[i].ActivityId + " (" + All[i].ActivityName + ") in club " + currentClubId);
+                // trace("Removing orphaned subscription for activity " + All[i].ActivityId + " (" + All[i].ActivityName + ") in club " + currentClubId);
                 All.RemoveAt(i);
                 removed++;
             }

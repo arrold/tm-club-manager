@@ -105,7 +105,7 @@ class Activity {
     uint RoomId = 0;
     
     MapInfo[] Maps;
-    MapInfo[] PendingMaps;
+
     
     // Metadata for UI
     bool MapsLoaded = false;
@@ -117,7 +117,7 @@ class Activity {
     bool PendingDelete = false;
     bool IsManagingMaps = false;
     bool HasMapChanges = false;
-
+    
     // News specific
     string Headline;
     string Body;
