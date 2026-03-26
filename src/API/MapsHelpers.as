@@ -14,7 +14,7 @@ namespace Maps {
         string[] nested = {"campaign", "room", "resource"};
         for (uint i = 0; i < nested.Length; i++) {
             if (json.HasKey(nested[i]) && json[nested[i]].GetType() == Json::Type::Object) {
-                auto res = GetListFromJson(json[nested[i]]);
+                Json::Value@ res = GetListFromJson(json[nested[i]]);
                 if (res !is null) return res;
             }
         }

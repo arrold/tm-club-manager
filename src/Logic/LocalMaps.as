@@ -1,15 +1,10 @@
 CGameCtnChallengeInfo@ TryGetMapInfo(const string &in fidsPath) {
-    auto fid = Fids::GetUser(fidsPath);
+    CSystemFidFile@ fid = Fids::GetUser(fidsPath);
     if (fid is null && fidsPath.StartsWith("Maps/")) @fid = Fids::GetUser(fidsPath.SubStr(5));
     if (fid is null) return null;
 
-    auto nod = fid.Nod;
-    if (nod is null) {
-        yield();
-        @nod = fid.Nod;
-    }
-    if (nod is null) return null;
-    return cast<CGameCtnChallengeInfo>(nod);
+    if (fid is null) return null;
+    return cast<CGameCtnChallengeInfo>(fid.Nod);
 }
 
 
@@ -77,7 +72,7 @@ void RefreshLocalMaps() {
             mapGbxCount++;
             
             // Primary Strategy: Manual Gbx Parsing (Fast & Reliable)
-            auto header = Gbx::ReadHeader(absPath);
+            Gbx::MapHeader@ header = Gbx::ReadHeader(absPath);
             if (header !is null && header.Uid != "") {
                 LocalMap@ m = LocalMap();
                 m.Uid = header.Uid;
@@ -92,7 +87,7 @@ void RefreshLocalMaps() {
             } else {
                 // Secondary Strategy: Fids as Fallback
                 string fidsPath = "Maps/" + relPath;
-                auto info = TryGetMapInfo(fidsPath);
+                CGameCtnChallengeInfo@ info = TryGetMapInfo(fidsPath);
                 if (info !is null) {
                     LocalMap@ m = LocalMap(info);
                     m.Filename = fidsPath;
@@ -102,7 +97,7 @@ void RefreshLocalMaps() {
                 }
             }
         }
-        if (i % 100 == 0) yield();
+        if (i % 10 == 0) yield();
     }
     
     if (State::LocalMaps.Length == 0 && mapGbxCount > 0) {
@@ -113,7 +108,7 @@ void RefreshLocalMaps() {
     for (uint i = 0; i < State::LocalMaps.Length; i++) {
         for (uint j = i + 1; j < State::LocalMaps.Length; j++) {
             if (State::LocalMaps[i].Filename > State::LocalMaps[j].Filename) {
-                auto temp = State::LocalMaps[i];
+                LocalMap@ temp = State::LocalMaps[i];
                 @State::LocalMaps[i] = State::LocalMaps[j];
                 @State::LocalMaps[j] = temp;
             }
@@ -127,7 +122,7 @@ void RefreshLocalMaps() {
     string[] checkedUids;
     bool[] checkedUploaded;
     for (uint i = 0; i < State::LocalMaps.Length; i++) {
-        auto@ m = State::LocalMaps[i];
+        LocalMap@ m = State::LocalMaps[i];
         if (m is null || m.Uid == "") {
             if (m !is null) m.IsValidated = false;
             continue;
@@ -154,9 +149,9 @@ void RefreshLocalMaps() {
 }
 
 void WalkFidsFolder(const string &in folderPath) {
-    auto fid = Fids::GetUser(folderPath);
+    CSystemFidFile@ fid = Fids::GetUser(folderPath);
     if (fid is null) return;
-    auto nod = fid.Nod;
+    CMwNod@ nod = fid.Nod;
     yield();
 }
 
@@ -209,7 +204,7 @@ void DoAddLocalMap(ref@ r) {
 void DoAddSelectedLocalMaps() {
     if (State::SelectedClub is null || State::TargetActivity is null) return;
     
-    auto a = State::TargetActivity;
+    Activity@ a = State::TargetActivity;
     if (!a.MapsLoaded && !a.LoadingMaps) {
         // trace("DoAddSelectedLocalMaps: Loading existing maps first...");
         LoadActivityMaps(a);
@@ -222,7 +217,7 @@ void DoAddSelectedLocalMaps() {
 
     uint count = 0;
     for (uint i = 0; i < State::LocalMaps.Length; i++) {
-        auto m = State::LocalMaps[i];
+        LocalMap@ m = State::LocalMaps[i];
         if (m !is null && m.Selected) {
             if (!Nadeo::IsMapUploaded(m.Uid)) {
                 if (!Nadeo::RegisterMap(m.Uid)) continue;

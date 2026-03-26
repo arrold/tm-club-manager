@@ -22,12 +22,20 @@ namespace Gbx {
         return u8At(s, i) | (u8At(s, i + 1) << 8) | (u8At(s, i + 2) << 16) | (u8At(s, i + 3) << 24);
     }
 
+
     int stringFind(const string &in s, const string &in sub, uint start = 0) {
         if (sub.Length == 0) return int(start);
         int sLen = int(s.Length);
         int subLen = int(sub.Length);
         for (int i = int(start); i <= sLen - subLen; i++) {
-            if (s.SubStr(i, subLen) == sub) return i;
+            bool matched = true;
+            for (int j = 0; j < subLen; j++) {
+                if (s[i + j] != sub[j]) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) return i;
         }
         return -1;
     }
@@ -70,7 +78,7 @@ namespace Gbx {
         f.Open(path, IO::FileMode::Read);
         
         // Read 4KB to ensure we get the chunk table and early metadata
-        auto buf = f.Read(4096);
+        MemoryBuffer@ buf = f.Read(4096);
         f.Close();
 
         if (buf is null || buf.GetSize() < 100) return null;

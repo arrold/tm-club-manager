@@ -106,7 +106,7 @@ class ClubsTab : Tab {
 
         UI::Separator();
 
-        auto items = State::ClubActivities;
+        Activity[]@ items = State::ClubActivities;
         if (items.Length == 0 && !State::refreshingActivities) {
             UI::TextDisabled("No activities found for this club.");
         } else {
@@ -171,7 +171,7 @@ class ClubsTab : Tab {
             if (UI::BeginCombo("Campaign link", campName)) {
                 if (UI::Selectable("None", State::nextRoomMirrorCampaignId == 0)) State::nextRoomMirrorCampaignId = 0;
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
-                    auto c = State::ClubActivities[i];
+                    Activity@ c = State::ClubActivities[i];
                     if (c.Type == "campaign") {
                         if (UI::Selectable(Icons::Flag + " " + c.Name, State::nextRoomMirrorCampaignId == c.CampaignId)) {
                             State::nextRoomMirrorCampaignId = c.CampaignId;
@@ -189,7 +189,7 @@ class ClubsTab : Tab {
     }
 
     void RenderActivities(uint folderId, Activity[]@ items) {
-        auto siblings = GetSortedSiblings(folderId, items);
+        Activity@[] siblings = GetSortedSiblings(folderId, items);
         for (uint i = 0; i < siblings.Length; i++) {
             RenderActivityNode(siblings[i], items);
         }
@@ -259,7 +259,7 @@ class ClubsTab : Tab {
             if (UI::Button(Icons::Pencil + "##rename_btn")) { a.IsRenaming = true; a.RenameBuffer = a.Name; }
 
             // Reorder
-            auto siblings = GetSortedSiblings(a.FolderId, items);
+            Activity@[] siblings = GetSortedSiblings(a.FolderId, items);
             int idx = -1;
             for (uint i = 0; i < siblings.Length; i++) if (siblings[i].Id == a.Id) { idx = i; break; }
             UI::SameLine(); UI::BeginDisabled(idx <= 0);
@@ -386,7 +386,7 @@ class ClubsTab : Tab {
                         UI::TableHeadersRow();
 
                         for (uint i = 0; i < a.Maps.Length; i++) {
-                            auto m = a.Maps[i];
+                            MapInfo@ m = a.Maps[i];
                             UI::TableNextRow();
                             
                             if (m.PendingDelete) UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0.4f, 0.1f, 0.1f, 0.5f));
@@ -447,7 +447,7 @@ class ClubsTab : Tab {
 
     bool showAuditDetails = false;
     void RenderAuditSubscription(Activity@ a) {
-        auto sub = Subscriptions::GetByActivity(a.Id);
+        Subscription@ sub = Subscriptions::GetByActivity(a.Id);
         if (sub is null) return;
         UI::Separator();
         UI::Text("\\$f80" + Icons::MapMarker + "\\$z Subscription Curation Audit");
@@ -518,7 +518,7 @@ class ClubsTab : Tab {
                         UI::TableHeadersRow();
 
                         for (uint i = 0; i < a.AuditAdded.Length; i++) {
-                            auto m = a.AuditAdded[i];
+                            TmxMap@ m = a.AuditAdded[i];
                             UI::TableNextRow();
                             UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0, 0.4f, 0, 0.3f));
                             UI::TableNextColumn(); UI::Text("\\$0f0" + Icons::PlusCircle + " ADD");
@@ -561,7 +561,7 @@ class ClubsTab : Tab {
         for (uint i = 0; i < siblings.Length; i++) {
             for (uint j = i + 1; j < siblings.Length; j++) {
                 if (siblings[i].Position > siblings[j].Position) {
-                    auto temp = siblings[i]; @siblings[i] = siblings[j]; @siblings[j] = temp;
+                    Activity@ temp = siblings[i]; @siblings[i] = siblings[j]; @siblings[j] = temp;
                 }
             }
         }

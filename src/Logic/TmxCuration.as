@@ -7,7 +7,7 @@
  * results. It also handles client-side filtering for attributes TMX cannot 
  * natively filter (e.g., precise time ranges or multi-tag combinations).
  */
-TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true) {
+TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true) {
     TmxMap[] allResults;
     uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
     uint totalNeeded = skipCount + limit;
@@ -19,7 +19,7 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     
     uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50)); // Smaller batches for stability
     while (allResults.Length < totalNeeded) {
-        auto json = TMX::SearchMaps(f, batchSize, offset, lastId);
+        Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache);
         int fetchedCount = 0;
         TmxMap[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
@@ -147,13 +147,13 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
 }
 
 void DoTmxSearch() {
-    auto f = State::tmxFilters;
+    TmxSearchFilters@ f = State::tmxFilters;
     State::searchInProgress = true;
     
     if (f.CurrentPage < 1) f.CurrentPage = 1;
 
     // Fetch exactly what the UI limit asks for
-    State::tmxSearchResults = FetchMapsSequential(f, f.ResultLimit, true);
+    State::tmxSearchResults = FetchMapsSequential(f, f.ResultLimit, true, true);
     
     State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
     for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
@@ -208,7 +208,7 @@ void ApplyBatchToActivity(Activity@ a, string[]@ uids) {
             finalUids.RemoveRange(25, finalUids.Length - 25);
             Notify("Nadeo limits Campaigns to 25 maps! List truncated.");
         }
-        auto current = API::GetCampaignMaps(State::SelectedClub.Id, a.CampaignId);
+        Json::Value@ current = API::GetCampaignMaps(State::SelectedClub.Id, a.CampaignId);
         API::SetCampaignMaps(State::SelectedClub.Id, a.CampaignId, a.Name, finalUids, current);
     } else if (a.Type == "room") {
         if (finalUids.Length > 100) {

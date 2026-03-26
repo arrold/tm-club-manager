@@ -7,8 +7,29 @@ namespace TMX {
         UI::ShowNotification("Trackmania Club Manager", msg);
     }
 
-    Json::Value@ TmxRequest(const string &in url) {
-        auto req = Net::HttpRequest();
+    // Cache and Throttling
+    uint64 lastRequestTime = 0;
+    dictionary searchCache;
+
+    void Throttle() {
+        uint64 now = Time::Now;
+        if (now < lastRequestTime + 500) {
+            uint64 sleepTime = (lastRequestTime + 500) - now;
+            // trace("[TMX] Throttling for " + sleepTime + "ms...");
+            yield(int(sleepTime));
+        }
+        lastRequestTime = Time::Now;
+    }
+
+    Json::Value@ TmxRequest(const string &in url, bool useCache = true) {
+        if (useCache && searchCache.Exists(url)) {
+            // trace("[TMX] Serving from cache: " + url);
+            return cast<Json::Value>(searchCache[url]);
+        }
+
+        Throttle();
+
+        Net::HttpRequest@ req = Net::HttpRequest();
         req.Url = url;
         // User-Agent is strictly mandatory for TMX to avoid 403s
         req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
@@ -20,11 +41,16 @@ namespace TMX {
             warn("TMX API Error [" + req.ResponseCode() + "]:  (URL: " + url + ")");
             return null;
         }
-        return req.Json();
+
+        Json::Value@ json = req.Json();
+        if (useCache && json !is null) {
+            @searchCache[url] = json;
+        }
+        return json;
     }
 
-    Json::Value@ TmxSearch(const string &in params) {
-        return TmxRequest("https://trackmania.exchange/api/maps?" + params);
+    Json::Value@ TmxSearch(const string &in params, bool useCache = true) {
+        return TmxRequest("https://trackmania.exchange/api/maps?" + params, useCache);
     }
 
     uint GetTagIdFromName(const string &in name) {
@@ -61,7 +87,7 @@ namespace TMX {
 
     string FormatDate(const string &in d) {
         if (d == "") return "";
-        auto parts = d.Split("/");
+        string[] parts = d.Split("/");
         if (parts.Length != 3) return d;
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
@@ -74,7 +100,7 @@ namespace TMX {
  * - ExcludeTags: maps that MUST NOT have these tags.
  * Also implements guardrails for "Awards Most" sorting to prevent 500 errors on the TMX side.
  */
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0) {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
         // Priority filters first for TMX V1 stability
@@ -138,7 +164,7 @@ namespace TMX {
         }
         
         // trace("[TMX] Search Params: " + params);
-        auto json = TmxSearch(params);
+        Json::Value@ json = TmxSearch(params, useCache);
         if (json is null) {
             warn("[TMX] Search returned null.");
         } else if (json.GetType() != Json::Type::Array) {

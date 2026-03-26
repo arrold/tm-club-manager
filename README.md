@@ -23,6 +23,11 @@ A powerful Openplanet plugin designed to streamline the management of Trackmania
 - **Direct Navigation**: Browse your `Documents/Trackmania/Media/` maps within the plugin.
 - **Efficient Organization**: Quickly identify and sort local files without leaving the game.
 
+### 5. High-Performance Engineering
+- **Modern AngelScript**: Fully refactored for explicit typing, handle safety, and null-identity verification.
+- **Responsible API Usage**: Global TMX rate-limiting (2 req/sec) and memory caching to ensure stability and respect community guidelines.
+- **optimized Gbx Scanner**: Fast, yield-aware local map indexing that handles thousands of maps without script timeouts.
+
 ## Installation
 
 1. Download the latest `ClubManager.op` from the [GitHub Releases](https://github.com/Arrold/tm-club-manager/releases) page.

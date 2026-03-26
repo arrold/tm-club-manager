@@ -4,7 +4,7 @@
 
 uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0) {
     if (json is null || !json.HasKey(key)) return defaultValue;
-    auto v = json[key];
+    Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return uint(v);
     if (v.GetType() == Json::Type::String) return Text::ParseUInt(string(v));
     return defaultValue;
@@ -12,7 +12,7 @@ uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0)
 
 int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
     if (json is null || !json.HasKey(key)) return defaultValue;
-    auto v = json[key];
+    Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return int(v);
     if (v.GetType() == Json::Type::String) return Text::ParseInt(string(v));
     return defaultValue;
@@ -20,7 +20,7 @@ int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
 
 bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = false) {
     if (json is null || !json.HasKey(key)) return defaultValue;
-    auto v = json[key];
+    Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Boolean) return bool(v);
     if (v.GetType() == Json::Type::Number) return int(v) != 0;
     if (v.GetType() == Json::Type::String) {
@@ -32,7 +32,7 @@ bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = fa
 
 string JsonGetString(Json::Value@ json, const string &in key, const string &in defaultValue = "") {
     if (json is null || !json.HasKey(key)) return defaultValue;
-    auto v = json[key];
+    Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::String) return string(v);
     if (v.GetType() == Json::Type::Number || v.GetType() == Json::Type::Boolean) return Json::Write(v);
     return defaultValue;
@@ -256,7 +256,7 @@ class TmxMap {
 
         if (json.HasKey("Tags") && json["Tags"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["Tags"].Length; i++) {
-                auto t = json["Tags"][i];
+                Json::Value@ t = json["Tags"][i];
                 if (t.GetType() == Json::Type::Object && t.HasKey("Name"))
                     Tags.InsertLast(string(t["Name"]));
             }
@@ -357,7 +357,7 @@ class TmxSearchFilters {
 
     TmxSearchFilters@ Clone() {
         SyncTimeMs();
-        auto other = TmxSearchFilters();
+        TmxSearchFilters@ other = TmxSearchFilters();
         other.MapName = MapName;
         other.AuthorName = AuthorName;
         other.Vehicle = Vehicle;
@@ -550,7 +550,7 @@ class FolderNode {
         for (uint i = 0; i < Subfolders.Length; i++) {
             if (Subfolders[i].Name == subName) return Subfolders[i];
         }
-        auto node = FolderNode(subName);
+        FolderNode@ node = FolderNode(subName);
         Subfolders.InsertLast(node);
         return node;
     }
@@ -560,7 +560,7 @@ class FolderNode {
         for (uint i = 0; i < Subfolders.Length; i++) {
             for (uint j = i + 1; j < Subfolders.Length; j++) {
                 if (Subfolders[i].Name > Subfolders[j].Name) {
-                    auto temp = Subfolders[i]; @Subfolders[i] = Subfolders[j]; @Subfolders[j] = temp;
+                    FolderNode@ temp = Subfolders[i]; @Subfolders[i] = Subfolders[j]; @Subfolders[j] = temp;
                 }
             }
             Subfolders[i].Sort();
@@ -569,7 +569,7 @@ class FolderNode {
         for (uint i = 0; i < Maps.Length; i++) {
             for (uint j = i + 1; j < Maps.Length; j++) {
                 if (Maps[i].Name > Maps[j].Name) {
-                    auto temp = Maps[i]; @Maps[i] = Maps[j]; @Maps[j] = temp;
+                    LocalMap@ temp = Maps[i]; @Maps[i] = Maps[j]; @Maps[j] = temp;
                 }
             }
         }
