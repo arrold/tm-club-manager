@@ -29,7 +29,7 @@ class CurationTab : Tab {
 
 
     void RenderFilters() {
-        auto f = State::tmxFilters;
+        TmxSearchFilters@ f = State::tmxFilters;
 
         // --- Section 1: Baseline Search Parameters ---
         UI::PushItemWidth(150);
@@ -112,7 +112,7 @@ class CurationTab : Tab {
         string limitLabel = Icons::ExclamationTriangle + " Room Guardrails: ";
         vec4 limitColor = vec4(0.2f, 0.2f, 0.2f, 0.4f);
         if (f.LimitFilter == 1) { limitLabel += "Exclude Red"; limitColor = vec4(0.7f, 0.1f, 0.1f, 0.8f); }
-        else if (f.LimitFilter == 2) { limitLabel += "Exclude Red+Yellow"; limitColor = vec4(0.7f, 0.6f, 0.1f, 0.8f); }
+        else if (f.LimitFilter == 2) { limitLabel += "Exclude Red+Yellow"; limitColor = vec4(0.9f, 0.9f, 0.1f, 0.8f); }
         else { limitLabel += "None"; }
 
         if (DrawToggle(limitLabel, f.LimitFilter > 0, limitColor)) {
@@ -175,7 +175,7 @@ class CurationTab : Tab {
     }
 
     void RenderTagsSection() {
-        auto f = State::tmxFilters;
+        TmxSearchFilters@ f = State::tmxFilters;
         string label = "Filter by Tags (" + (f.IncludeTags.Length + f.ExcludeTags.Length) + ")  -  (Click: Include > Exclude > None)###TagsHeader";
         
         UI::PushStyleVar(UI::StyleVar::FramePadding, vec2(10, 2));
@@ -249,10 +249,10 @@ class CurationTab : Tab {
         UI::TextDisabled("Target Activity" + limitStr + ":"); UI::SameLine();
         string targetName = (State::TargetActivity !is null) ? State::TargetActivity.Name : "None Selected";
         UI::PushItemWidth(300);
-        if (bool(UI::BeginCombo("##batch_target", targetName))) {
+        if (UI::BeginCombo("##batch_target", targetName)) {
             if (State::SelectedClub !is null) {
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
-                    auto a = State::ClubActivities[i];
+                    Activity@ a = State::ClubActivities[i];
                     if (a.Type != "campaign" && a.Type != "room") continue;
                     if (a.Type == "room" && a.MirrorCampaignId > 0) continue; // Cannot manually add to mirrored rooms
                     if (UI::Selectable(a.Name, State::TargetActivity !is null && State::TargetActivity.Id == a.Id)) {
@@ -289,7 +289,7 @@ class CurationTab : Tab {
             if (State::TargetActivity is null) {
                 UI::ShowNotification("Club Manager", "Please select a Target Activity first!");
             } else {
-                auto f = State::tmxFilters;
+                TmxSearchFilters@ f = State::tmxFilters;
                 // Recalculate time values from UI inputs before saving
                 f.TimeFromMs = (f.hFrom * 3600000) + (f.mFrom * 60000) + (f.sFrom * 1000);
                 f.TimeToMs = (f.hTo * 3600000) + (f.mTo * 60000) + (f.sTo * 1000);
@@ -318,7 +318,7 @@ class CurationTab : Tab {
             UI::TableHeadersRow();
 
             for (uint i = 0; i < State::tmxSearchResults.Length; i++) {
-                auto m = State::tmxSearchResults[i];
+                TmxMap@ m = State::tmxSearchResults[i];
                 UI::TableNextRow();
                 UI::TableNextColumn();
                 State::tmxSelected[i] = UI::Checkbox("##sel" + i, State::tmxSelected[i]);

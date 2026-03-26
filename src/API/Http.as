@@ -12,7 +12,7 @@ namespace API {
     }
 
     void ClearTasks() {
-        auto app = cast<CGameManiaPlanet>(GetApp());
+        CGameManiaPlanet@ app = cast<CGameManiaPlanet>(GetApp());
         if (app.MenuManager is null || app.MenuManager.MenuCustom_CurrentManiaApp is null) return;
         auto userMgr = app.MenuManager.MenuCustom_CurrentManiaApp.UserMgr;
         for (uint i = 0; i < tasksToClear.Length; i++) {

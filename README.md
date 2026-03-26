@@ -1,52 +1,32 @@
-# Trackmania Club Manager Plugin
+# Club Manager for Trackmania
 
-A powerful Openplanet plugin for Trackmania (2020) designed to streamline the management of Club Campaigns, Rooms, and Activity folders.
+Club Manager is a tool designed to help you organize and manage your Trackmania Club activities (campaigns, rooms, and folders) more efficiently. 
 
-## **Core Features**
+## Features
 
-### **1. Campaign & Activity Management**
-*   **Playlist Synchronization**: Easily update campaign playlists with map UIDs.
-*   **Automated Visibility**: Automatically syncs the `itemsCount` on the parent Club Activity so that all maps in your playlist are immediately visible to players.
-*   **Organizational Folders**: Create and manage folders to group your campaigns and rooms within the club.
-*   **Rename & Reorder**: Real-time renaming and reordering of maps and activities.
+### Club Organization
+- **Visual Tree-View**: Manage all your club campaigns, rooms, and folders in a structured layout.
+- **Easy Management**: Quickly reorder, rename, and move activities between folders.
+- **Room Mirroring**: Create rooms that automatically link to and update from a parent campaign.
 
-### **2. Club Room Synchronization**
-*   **Mirroring Logic**: Link a Room to a Campaign, ensuring that any map changes in the campaign are automatically reflected in the live server room.
-*   **Live Sync Control**: Dedicated tools to deactivate/reactivate rooms to force server-side playlist refreshes.
-*   **Configuration**: Manage room settings like privacy, max players, and scripts.
+### Map Curation & TMX Integration
+- **Advanced Search**: Find maps on [Trackmania Exchange (TMX)](https://trackmania.exchange) using filters for name, author, awards, time range, and tags.
+- **Automatic Audits**: Keep your club campaigns and rooms synced with any TMX search. See exactly what has changed and sync everything with a single click.
+- **Guardrails**: Flags maps that might exceed game limits (large file sizes or high display costs) before you add them.
 
-### **3. Dynamic Curation (Subscriptions)**
-*   **Pin TMX Searches**: Associate a specific TMX search filter (e.g., "Top 25 Dirt TOTD") with any club activity.
-*   **Automated Audits**: Run a "Curation Audit" to see exactly which maps have entered/dropped from your criteria versus what is currently in-game.
-*   **Batch Application**: Apply audit results in one click to sync your club content with the latest community rankings.
+### Local Map Browser
+- **Direct Access**: Browse and add maps directly from your local `Documents/Trackmania/Maps/` folder without leaving the game.
 
-### **4. Integrated TMX Search**
-*   **Advanced Filtering**: Filter maps by awards, vehicle type (Snow, Rally, etc.), primary tags, difficulty, and more.
-*   **Pagination Support**: Browse results page-by-page directly within the plugin.
-*   **Visibility Validation**: Highlights maps that might be too large for server embedding or have excessive display costs.
+## Requirements
+- **Club Access**: You must have an active Trackmania Club Access subscription to manage club activities.
 
-## **Installation**
+## Installation
 
-1.  Clone this repository or download the source.
-2.  Create a symbolic link (or copy) to your Openplanet Plugins folder:
-    *   `C:\Users\<User>\OpenplanetNext\Plugins\ClubManager` -> `path/to/tm-club-manager`
-3.  Ensure the `info.toml` is in the root of the plugin directory.
-
-## **Requirements**
-*   **Openplanet for Trackmania** with **Club Access** permissions.
-*   **NadeoServices** and **NadeoLiveServices** audiences authenticated.
-
-## **Architecture**
-*   **src/Main.as**: Entry point and permission handling.
-*   **src/MainUI.as**: Root UI rendering and tab management.
-*   **src/API/**: Modularized API wrappers for Nadeo Live Services, TMX, and Map Helpers.
-*   **src/Logic/**: Core business logic for audits, map synchronization, and activity management.
-*   **src/Tabs/**: Component-based UI for Clubs, Search, and local map views.
-*   **src/Models.as**: Shared data structures for Clubs, Activities, and Maps.
-*   **src/State.as**: Centralized state management for the plugin.
-
-## **License**
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+1. Download the latest `ClubManager.op` from the [GitHub Releases](https://github.com/Arrold/tm-club-manager/releases) page.
+2. Place the `.op` file into your Openplanet Plugins folder:
+   - Default path: `C:\Users\<YourUser>\OpenplanetNext\Plugins\`
+3. Restart the game or refresh your plugins via the F3 menu.
 
 ---
-*Created by Arrold*
+*Developed by Arrold*
+

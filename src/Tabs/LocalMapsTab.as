@@ -86,7 +86,7 @@ class LocalMapsTab : Tab {
     FolderNode@ BuildFolderTree() {
         FolderNode@ root = FolderNode("Maps");
         for (uint i = 0; i < State::LocalMaps.Length; i++) {
-            auto m = State::LocalMaps[i];
+            LocalMap@ m = State::LocalMaps[i];
             if (m.Uid == "" || !m.IsValidated) continue;
 
             string path = m.Filename;

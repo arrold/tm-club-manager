@@ -18,7 +18,7 @@ namespace Subscriptions {
             return;
         }
 
-        auto json = Json::FromFile(path);
+        Json::Value@ json = Json::FromFile(path);
         if (json.GetType() == Json::Type::Array) {
             for (uint i = 0; i < json.Length; i++) {
                 Subscription@ sub = Subscription(json[i]);
@@ -50,7 +50,7 @@ namespace Subscriptions {
     void Add(Subscription@ sub) {
         if (sub.ActivityId == 0) return;
         if (sub.ClubId == 0 && State::SelectedClub !is null) sub.ClubId = State::SelectedClub.Id;
-        auto existing = GetByActivity(sub.ActivityId);
+        Subscription@ existing = GetByActivity(sub.ActivityId);
         if (existing !is null) {
             // Update existing
             @existing.Filters = sub.Filters;

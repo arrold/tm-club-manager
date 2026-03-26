@@ -11,7 +11,7 @@ namespace API {
             list.Add(wstring(wsids[i]));
         }
         
-        auto app = cast<CGameManiaPlanet>(GetApp());
+        CGameManiaPlanet@ app = cast<CGameManiaPlanet>(GetApp());
         if (app.MenuManager is null || app.MenuManager.MenuCustom_CurrentManiaApp is null) return array<string>();
         auto userMgr = app.MenuManager.MenuCustom_CurrentManiaApp.UserMgr;
         auto userId = userMgr.Users[0].Id;
@@ -37,10 +37,10 @@ namespace API {
 
     Json::Value@ FetchLiveEndpoint(const string &in route) {
         // trace("Fetching: " + route);
-        auto req = NadeoServices::Get("NadeoLiveServices", route);
+        Net::HttpRequest@ req = NadeoServices::Get("NadeoLiveServices", route);
         req.Start();
         while (!req.Finished()) yield();
-        auto json = req.Json();
+        Json::Value@ json = req.Json();
         if (json is null || (json.GetType() == Json::Type::Object && json.HasKey("error"))) {
             warn("API Fetch Error: " + route + (json !is null ? " Response: " + Json::Write(json) : ""));
             return null;
@@ -51,10 +51,10 @@ namespace API {
     Json::Value@ PostLiveEndpoint(const string &in route, Json::Value@ data) {
         // trace("Posting to: " + route);
         while (!NadeoServices::IsAuthenticated("NadeoLiveServices")) yield();
-        auto req = NadeoServices::Post("NadeoLiveServices", route, Json::Write(data));
+        Net::HttpRequest@ req = NadeoServices::Post("NadeoLiveServices", route, Json::Write(data));
         req.Start();
         while (!req.Finished()) yield();
-        auto json = req.Json();
+        Json::Value@ json = req.Json();
         if (json !is null && json.GetType() == Json::Type::Object && json.HasKey("error")) {
             warn("API POST Error: " + route + " Response: " + Json::Write(json));
             return null;
@@ -210,7 +210,7 @@ namespace API {
     }
 
     Json::Value@ SetRoomMaps(uint clubId, uint activityId, string[]@ mapUids) {
-        auto roomJson = GetClubRoom(clubId, activityId);
+        auto@ roomJson = GetClubRoom(clubId, activityId);
         if (roomJson is null) return null;
         Json::Value@ data = PrepareRoomPayload(roomJson);
         
@@ -241,8 +241,8 @@ namespace API {
         
         Json::Value@ settingsArr = Json::Array();
         if (room.HasKey("scriptSettings") && room["scriptSettings"].GetType() == Json::Type::Object) {
-            auto s = room["scriptSettings"];
-            auto keys = s.GetKeys();
+            Json::Value@ s = room["scriptSettings"];
+            string[]@ keys = s.GetKeys();
             for (uint i = 0; i < keys.Length; i++) {
                 settingsArr.Add(s[keys[i]]);
             }
