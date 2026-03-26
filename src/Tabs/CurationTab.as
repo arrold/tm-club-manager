@@ -112,7 +112,7 @@ class CurationTab : Tab {
         string limitLabel = Icons::ExclamationTriangle + " Room Guardrails: ";
         vec4 limitColor = vec4(0.2f, 0.2f, 0.2f, 0.4f);
         if (f.LimitFilter == 1) { limitLabel += "Exclude Red"; limitColor = vec4(0.7f, 0.1f, 0.1f, 0.8f); }
-        else if (f.LimitFilter == 2) { limitLabel += "Exclude Red+Yellow"; limitColor = vec4(0.7f, 0.6f, 0.1f, 0.8f); }
+        else if (f.LimitFilter == 2) { limitLabel += "Exclude Red+Yellow"; limitColor = vec4(0.9f, 0.9f, 0.1f, 0.8f); }
         else { limitLabel += "None"; }
 
         if (DrawToggle(limitLabel, f.LimitFilter > 0, limitColor)) {
@@ -249,7 +249,7 @@ class CurationTab : Tab {
         UI::TextDisabled("Target Activity" + limitStr + ":"); UI::SameLine();
         string targetName = (State::TargetActivity !is null) ? State::TargetActivity.Name : "None Selected";
         UI::PushItemWidth(300);
-        if (bool(UI::BeginCombo("##batch_target", targetName))) {
+        if (UI::BeginCombo("##batch_target", targetName)) {
             if (State::SelectedClub !is null) {
                 for (uint i = 0; i < State::ClubActivities.Length; i++) {
                     auto a = State::ClubActivities[i];

@@ -208,6 +208,7 @@ class TmxMap {
         } else {
             Author = "Unknown Author";
         }
+        
 
         if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object && json["Medals"].HasKey("Author")) {
             LengthSecs = uint(json["Medals"]["Author"]) / 1000;

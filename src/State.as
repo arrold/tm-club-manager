@@ -27,6 +27,8 @@ namespace State {
     Activity@ TargetActivity;
     bool searchInProgress = false;
     bool bulkAuditInProgress = false;
+    bool bulkAuditComplete = false; // Flag to show "Apply All"
+    uint bulkAuditUpdatesAvailable = 0; // Number of activities with changes
     string bulkAuditStatus = "";
     float bulkAuditProgress = 0.0f;
 

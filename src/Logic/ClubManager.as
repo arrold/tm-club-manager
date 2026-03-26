@@ -40,7 +40,7 @@ void RefreshActivities() {
 
     if (State::SelectedClub !is null && State::SelectedClub.Id == clubId) {
         State::ClubActivities = items;
-        if (!State::isInitialised) startnew(RefreshActiveActivities);
+        startnew(RefreshActiveActivities);
     }
     State::refreshingActivities = false;
 }
@@ -654,16 +654,11 @@ void DoReorderActivity() {
     Notify("Activity reordered.");
 }
 
-/* 
- * Sync All Workflow:
- * Iterates through all activities in the current club that have a TMX subscription.
- * Performs a sequential audit (fetching latest TMX results) and immediately applies 
- * the changes if an audit cache is generated. This allows power-users to sync 
- * their entire club curation with one click.
- */
 void DoBulkAudit() {
     if (State::bulkAuditInProgress) return;
     State::bulkAuditInProgress = true;
+    State::bulkAuditComplete = false;
+    State::bulkAuditUpdatesAvailable = 0;
     State::bulkAuditProgress = 0.0f;
     
     auto items = State::ClubActivities;
@@ -679,22 +674,88 @@ void DoBulkAudit() {
     }
     
     uint current = 0;
+    uint updatesFound = 0;
     for (uint i = 0; i < items.Length; i++) {
+        if (State::SelectedClub is null) break;
         if (Subscriptions::GetByActivity(items[i].Id) !is null) {
-            State::bulkAuditStatus = "Syncing " + items[i].Name + "...";
+            State::bulkAuditStatus = "Auditing " + items[i].Name + "... (" + (current + 1) + "/" + total + ")";
             State::bulkAuditProgress = float(current) / float(total);
+            
             DoAuditSubscription(items[i]);
-            // Sequential Sync: After audit (comparison), immediately apply using the cache
-            if (items[i].AuditFullUidList.Length > 0) {
-                DoApplyAudit(items[i]);
+            if (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch) {
+                updatesFound++;
             }
+            
             current++;
             yield();
         }
     }
     
-    State::bulkAuditStatus = "Bulk Audit Complete!";
+    uint campaignUpdates = 0;
+    uint roomUpdates = 0;
+    for (uint i = 0; i < items.Length; i++) {
+        if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
+            if (items[i].Type == "campaign") campaignUpdates++;
+            else if (items[i].Type == "room") roomUpdates++;
+        }
+    }
+    
+    string summary = "";
+    if (campaignUpdates > 0) summary += campaignUpdates + " Campaign" + (campaignUpdates > 1 ? "s" : "");
+    if (roomUpdates > 0) {
+        if (summary != "") summary += ", ";
+        summary += roomUpdates + " Room" + (roomUpdates > 1 ? "s" : "");
+    }
+    
+    State::bulkAuditUpdatesAvailable = campaignUpdates + roomUpdates;
+    if (State::bulkAuditUpdatesAvailable == 0) {
+        State::bulkAuditStatus = "Audit Complete: All subscriptions are up to date.";
+    } else {
+        State::bulkAuditStatus = "Audit Complete: " + summary + " out of sync.";
+    }
+    
+    State::bulkAuditProgress = 1.0f;
+    State::bulkAuditComplete = true;
+    State::bulkAuditInProgress = false;
+}
+
+void DoBulkApply() {
+    if (State::bulkAuditInProgress || !State::bulkAuditComplete) return;
+    State::bulkAuditInProgress = true;
+    State::bulkAuditProgress = 0.0f;
+    
+    auto items = State::ClubActivities;
+    uint total = 0;
+    for (uint i = 0; i < items.Length; i++) {
+        if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
+            total++;
+        }
+    }
+    
+    if (total == 0) {
+        Notify("No pending updates to apply.");
+        State::bulkAuditInProgress = false;
+        State::bulkAuditComplete = false;
+        return;
+    }
+    
+    uint current = 0;
+    for (uint i = 0; i < items.Length; i++) {
+        if (State::SelectedClub is null) break;
+        if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
+            State::bulkAuditStatus = "Updating " + items[i].Name + "... (" + (current + 1) + "/" + total + ")";
+            State::bulkAuditProgress = float(current) / float(total);
+            
+            DoApplyAudit(items[i]);
+            
+            current++;
+            yield();
+        }
+    }
+    
+    State::bulkAuditStatus = "Bulk Update Complete!";
     State::bulkAuditProgress = 1.0f;
     sleep(2000);
+    State::bulkAuditComplete = false;
     State::bulkAuditInProgress = false;
 }

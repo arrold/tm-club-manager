@@ -82,7 +82,7 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
 
         // Apply secondary logic filters
         if (f.MapName != "" && !m.Name.ToLower().Contains(f.MapName.ToLower())) continue;
-        if (f.AuthorName != "" && !m.Author.ToLower().Contains(f.AuthorName.ToLower())) continue;
+
         
         // Difficulty filter (Normalised 1-6)
         if (m.Difficulty > 0 && m.Difficulty <= 6) {

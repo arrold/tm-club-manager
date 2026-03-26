@@ -87,7 +87,7 @@ namespace TMX {
         if (afterId > 0) params += "&after=" + tostring(afterId);
         if (offset > 0) params += "&skip=" + tostring(offset);
         
-        // Optimize "Not TOTD" + "Awards Most" searches which often 500
+        // Optimize complex queries that 500 on TMX side (Pagination + Awards + Not TOTD)
         if (f.InTOTD == 0 && f.SortPrimary == 0) {
             params += "&awardsmin=1";
         }
@@ -128,7 +128,7 @@ namespace TMX {
             int enumVal = GetSortEnumValue(f.SortPrimary);
             if (enumVal >= 0) params += "&order1=" + tostring(enumVal);
         }
-        if (f.SortSecondary >= 0 && f.InTOTD != 0) {
+        if (f.SortSecondary >= 0 && f.InTOTD != 0 && f.SortPrimary != 0) {
             int enumVal = GetSortEnumValue(f.SortSecondary);
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }
