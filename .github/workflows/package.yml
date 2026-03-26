@@ -2,6 +2,8 @@ name: Package Plugin
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*'
 
@@ -26,6 +28,7 @@ jobs:
           zip -r ClubManager.op info.toml src/ LICENSE README.md
 
       - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
           files: ClubManager.op
