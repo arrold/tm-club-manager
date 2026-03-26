@@ -1,43 +1,32 @@
 # Club Manager for Trackmania
 
-A powerful Openplanet plugin designed to streamline the management of Trackmania (2020) Club activities. Whether you manage a single room or a massive multi-club empire, Club Manager handles the technical overhead so you can focus on curation.
+Club Manager is a tool designed to help you organize and manage your Trackmania Club activities (campaigns, rooms, and folders) more efficiently. 
 
-## Key Features
+## Features
 
-### 1. Hierarchical Club Management
-- **Tree-View Interface**: Organize campaigns, rooms, and folders using a clean, nested layout.
-- **Bulk Reordering & Renaming**: Manage your club structure and map playlists in seconds.
-- **Folder Support**: Group related activities to keep your club list clean and navigable.
+### Club Organization
+- **Visual Tree-View**: Manage all your club campaigns, rooms, and folders in a structured layout.
+- **Easy Management**: Quickly reorder, rename, and move activities between folders.
+- **Room Mirroring**: Create rooms that automatically link to and update from a parent campaign.
 
-### 2. Advanced TMX Integration
-- **High-Density Search**: Find maps using awards, author time, primary surface, and more.
-- **Tag Selection Grid**: Multi-state filters (Include, Exclude, None) for precise map discovery.
-- **Safety Guardrails**: Proactively identify maps that exceed Nadeo server limits (Display Cost/Item Size) before adding them to your club.
+### Map Curation & TMX Integration
+- **Advanced Search**: Find maps on [Trackmania Exchange (TMX)](https://trackmania.exchange) using filters for name, author, awards, time range, and tags.
+- **Automatic Audits**: Keep your club campaigns and rooms synced with any TMX search. See exactly what has changed and sync everything with a single click.
+- **Guardrails**: Flags maps that might exceed game limits (large file sizes or high display costs) before you add them.
 
-### 3. Automated Subscriptions & Audits
-- **Live Sync**: Link any club activity to a TMX search configuration.
-- **One-Click Audits**: Instantly see which maps have dropped from your criteria and apply updates with a single sync.
-- **Room Mirroring**: Create dedicated rooms that automatically inherit and mirror map changes from a parent campaign.
+### Local Map Browser
+- **Direct Access**: Browse and add maps directly from your local `Documents/Trackmania/Maps/` folder without leaving the game.
 
-### 4. Local Map Browser
-- **Direct Navigation**: Browse your `Documents/Trackmania/Media/` maps within the plugin.
-- **Efficient Organization**: Quickly identify and sort local files without leaving the game.
-
-### 5. High-Performance Engineering
-- **Modern AngelScript**: Fully refactored for explicit typing, handle safety, and null-identity verification.
-- **Responsible API Usage**: Global TMX rate-limiting (2 req/sec) and memory caching to ensure stability and respect community guidelines.
-- **optimized Gbx Scanner**: Fast, yield-aware local map indexing that handles thousands of maps without script timeouts.
+## Requirements
+- **Club Access**: You must have an active Trackmania Club Access subscription to manage club activities.
 
 ## Installation
 
 1. Download the latest `ClubManager.op` from the [GitHub Releases](https://github.com/Arrold/tm-club-manager/releases) page.
 2. Place the `.op` file into your Openplanet Plugins folder:
    - Default path: `C:\Users\<YourUser>\OpenplanetNext\Plugins\`
-3. Restart your game or refresh plugins (`F3` -> `Plugins` -> `Refresh`).
-
-## Requirements
-- **Club Access**: You must have an active Club Access subscription to manage club activities.
-- **Standard Audiences**: The plugin uses standard Nadeo Web Services for all club interactions.
+3. Restart the game or refresh your plugins via the F3 menu.
 
 ---
 *Developed by Arrold*
+
