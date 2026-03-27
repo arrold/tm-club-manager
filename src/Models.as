@@ -207,6 +207,8 @@ class TmxMap {
 
         if (json.HasKey("Uploader") && json["Uploader"].GetType() == Json::Type::Object) {
             Author = json["Uploader"].HasKey("Name") ? Text::StripFormatCodes(string(json["Uploader"]["Name"])) : "Unknown Author";
+        } else if (json.HasKey("UploaderName")) {
+            Author = Text::StripFormatCodes(string(json["UploaderName"]));
         } else if (json.HasKey("Author")) {
             Author = string(json["Author"]);
         } else {
@@ -614,6 +616,49 @@ class TmxSearchFilters {
         json["ExcludeTags"] = exc;
         
         return json;
+    }
+
+    string GetDifference(TmxSearchFilters@ other) {
+        if (other is null) return "Other filter is null";
+        string diff = "";
+        if (MapName != other.MapName) diff += "MapName: '" + MapName + "' != '" + other.MapName + "', ";
+        if (AuthorNames.Length != other.AuthorNames.Length) {
+            diff += "AuthorCount: " + AuthorNames.Length + " != " + other.AuthorNames.Length + ", ";
+        } else {
+            for (uint i = 0; i < AuthorNames.Length; i++) {
+                if (AuthorNames[i] != other.AuthorNames[i]) {
+                    diff += "AuthorNames mismatch, ";
+                    break;
+                }
+            }
+        }
+        if (Vehicle != other.Vehicle) diff += "Vehicle: " + Vehicle + " != " + other.Vehicle + ", ";
+        if (Difficulty != other.Difficulty) diff += "Difficulty: " + Difficulty + " != " + other.Difficulty + ", ";
+        if (TimeFromMs != other.TimeFromMs) diff += "TimeFrom: " + TimeFromMs + " != " + other.TimeFromMs + ", ";
+        if (TimeToMs != other.TimeToMs) diff += "TimeTo: " + TimeToMs + " != " + other.TimeToMs + ", ";
+        if (UploadedFrom != other.UploadedFrom) diff += "UploadedFrom: " + UploadedFrom + " != " + other.UploadedFrom + ", ";
+        if (UploadedTo != other.UploadedTo) diff += "UploadedTo: " + UploadedTo + " != " + other.UploadedTo + ", ";
+        if (SortPrimary != other.SortPrimary) {
+            string p1 = (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(SortPrimary)] : "Unknown";
+            string p2 = (other.SortPrimary >= 0 && uint(other.SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(other.SortPrimary)] : "Unknown";
+            diff += "SortPrimary: " + p1 + " != " + p2 + ", ";
+        }
+        if (InTOTD != other.InTOTD) diff += "InTOTD: " + InTOTD + " != " + other.InTOTD + ", ";
+        if (InCollection != other.InCollection) diff += "InCollection: " + InCollection + " != " + other.InCollection + ", ";
+        
+        if (IncludeTags.Length != other.IncludeTags.Length) {
+            diff += "IncludeTags count mismatch, ";
+        } else {
+            for (uint i = 0; i < IncludeTags.Length; i++) {
+                if (IncludeTags[i] != other.IncludeTags[i]) {
+                    diff += "IncludeTags values mismatch, ";
+                    break;
+                }
+            }
+        }
+        
+        if (diff.EndsWith(", ")) diff = diff.SubStr(0, diff.Length - 2);
+        return diff;
     }
 }
 

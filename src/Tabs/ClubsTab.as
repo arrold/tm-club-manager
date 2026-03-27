@@ -529,7 +529,7 @@ class ClubsTab : Tab {
                         UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
                     
                     if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
-                        UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary] + (sub.Filters.SortSecondary >= 0 ? " -> " + TMX::SORT_NAMES[sub.Filters.SortSecondary] : ""));
+                        UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary]);
 
                     if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
                     if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));

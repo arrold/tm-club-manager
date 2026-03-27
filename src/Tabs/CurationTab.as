@@ -84,7 +84,9 @@ class CurationTab : Tab {
         UI::SameLine();
         f.SortPrimary = DrawCombo("Primary Sort", f.SortPrimary, TMX::SORT_NAMES);
         UI::SameLine();
-        f.SortSecondary = DrawCombo("Secondary Sort", f.SortSecondary, TMX::SORT_NAMES);
+        UI::BeginDisabled();
+        DrawCombo("Secondary Sort", -1, {"Disabled"});
+        UI::EndDisabled();
         UI::PopItemWidth();
 
         // Row C: Icon Toggles

@@ -32,7 +32,7 @@ namespace ConfigExporter {
         // Standardise filename: lowercase_with_underscores.json
         string rawName = State::SelectedClub.Name;
         string filename = "";
-        for (uint i = 0; i < rawName.Length; i++) {
+        for (int i = 0; i < rawName.Length; i++) {
             string c = rawName.SubStr(i, 1);
             if (c == " " || c == "/" || c == "\\" || c == ":" || c == "-") filename += "_";
             else filename += c.ToLower();

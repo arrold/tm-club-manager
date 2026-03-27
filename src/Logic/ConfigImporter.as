@@ -72,8 +72,6 @@ namespace ConfigImporter {
         // 1. Discovery
         Activity@[] existing;
         FetchAllExisting(State::SelectedClub.Id, existing);
-        // Log("Found " + existing.Length + " existing activities.");
-
         bool prune = JsonGetBool(config, "prune", false);
         
         // 2. Process Folders first
@@ -231,21 +229,50 @@ namespace ConfigImporter {
         
         sub.MapLimit = JsonGetUint(json, "mapLimit", 25);
 
-        // Check for updates if we have an existing activity
         bool needsUpdate = true;
+        string reason = "New subscription";
+
         if (existingAct !is null) {
             Subscription@ existingSub = Subscriptions::GetByActivity(existingAct.Id);
             if (existingSub !is null) {
-                // Simplified comparison: if we are importing, we assume the user wants THIS subscription state.
-                // We'll mark it as updated for transparency.
+                needsUpdate = false;
+                reason = "";
+
+                if (sub.SourceType != existingSub.SourceType) {
+                    needsUpdate = true;
+                    reason += "SourceType changed (" + sub.SourceType + " != " + existingSub.SourceType + "), ";
+                }
+                if (sub.MapLimit != existingSub.MapLimit) {
+                    needsUpdate = true;
+                    reason += "MapLimit changed (" + sub.MapLimit + " != " + existingSub.MapLimit + "), ";
+                }
+                
+                if (sub.SourceType == 0) { // Search Filters
+                    string diff = sub.Filters.GetDifference(existingSub.Filters);
+                    if (diff != "") {
+                        needsUpdate = true;
+                        reason += diff + ", ";
+                    }
+                } else if (sub.SourceType == 1) { // List
+                    if (sub.ListId != existingSub.ListId) {
+                        needsUpdate = true;
+                        reason += "ListId changed, ";
+                    }
+                    if (sub.ListType != existingSub.ListType) {
+                        needsUpdate = true;
+                        reason += "ListType changed, ";
+                    }
+                }
             }
         }
 
-        currentDelta.SubscriptionsUpdated++;
-        if (!dryRun) {
-            Subscriptions::Add(sub);
-        } else {
-            // Log("Dry Run: Subscription update pending for " + activityName);
+        if (needsUpdate) {
+            if (reason.EndsWith(", ")) reason = reason.SubStr(0, reason.Length - 2);
+            Log((dryRun ? "[Dry Run] " : "") + "Subscription update needed for \"" + activityName + "\": " + reason);
+            currentDelta.SubscriptionsUpdated++;
+            if (!dryRun) {
+                Subscriptions::Add(sub);
+            }
         }
     }
 }

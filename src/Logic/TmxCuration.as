@@ -22,18 +22,21 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     uint lastId = 0;
     
     uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50)); // Smaller batches for stability
-    while (allResults.Length < totalNeeded) {
+    uint targetLength = hasClientFilters ? totalNeeded : limit;
+    while (allResults.Length < targetLength) {
         Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache);
+        if (json is null) break; // Timeout or Error handled in TMX.as warning
+
         int fetchedCount = 0;
         TmxMap@[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
         for (uint i = 0; i < batch.Length; i++) {
-            if (allResults.Length < totalNeeded) {
+            if (allResults.Length < targetLength) {
                 allResults.InsertLast(batch[i]);
             }
         }
 
-        if (allResults.Length >= totalNeeded) break;
+        if (allResults.Length >= targetLength) break;
         if (fetchedCount < int(batchSize)) break; // No more results matching filters available
 
         // Advance the cursor: use TrackId for modern 'after' pagination,
@@ -50,8 +53,9 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     
     // Slice only the requested
     TmxMap@[] pageResults;
-    if (allResults.Length > skipCount) {
-        for (uint i = skipCount; i < allResults.Length; i++) {
+    uint startIdx = hasClientFilters ? skipCount : 0;
+    if (allResults.Length > startIdx) {
+        for (uint i = startIdx; i < allResults.Length; i++) {
             pageResults.InsertLast(allResults[i]);
         }
     }
@@ -96,6 +100,7 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
 
     // Client-side Sort
     SortMaps(merged, f.SortPrimary);
+    yield();
 
     // Slice
     TmxMap@[] pageResults;
@@ -116,9 +121,10 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
 void SortMaps(TmxMap@[]& arr, int sortIdx) {
     if (arr.Length < 2) return;
     if (sortIdx < 0 || sortIdx > 9) return; 
+    uint compareCount = 0;
     for (uint i = 0; i < arr.Length; i++) {
-        if (i % 20 == 0) yield(); // Yield to keep game responsive during O(n^2) sort
         for (uint j = i + 1; j < arr.Length; j++) {
+            if (++compareCount % 100 == 0) yield(); // Yield every 100 comparisons for responsiveness
             bool swap = false;
             switch (sortIdx) {
                 case 0: swap = arr[i].AwardCount < arr[j].AwardCount; break; // Awards Most
@@ -164,10 +170,21 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
 
+        // Author filter
+        if (f.AuthorNames.Length > 0) {
+            bool authorMatch = false;
+            for (uint j = 0; j < f.AuthorNames.Length; j++) {
+                if (m.Author.ToLower().Contains(f.AuthorNames[j].ToLower())) {
+                    authorMatch = true;
+                    break;
+                }
+            }
+            if (!authorMatch) continue;
+        }
+
         // Apply secondary logic filters
         if (f.MapName != "" && !m.Name.ToLower().Contains(f.MapName.ToLower())) continue;
 
-        
         // Difficulty filter (Normalised 1-6)
         if (m.Difficulty > 0 && m.Difficulty <= 6) {
             bool diffPassed = false;
@@ -248,11 +265,17 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
 void DoTmxSearch() {
     TmxSearchFilters@ f = State::tmxFilters.Clone();
     State::searchInProgress = true;
-    
+    State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+
     if (f.CurrentPage < 1) f.CurrentPage = 1;
 
-    // Fetch exactly what the UI limit asks for
-    State::tmxSearchResults = FetchMapsSequential(f, f.ResultLimit, true, true);
+    TmxMap@[] results = FetchMapsSequential(f, uint(f.ResultLimit), true, false);
+    
+    // TMX.as will handle warnings for timeouts.
+
+    for (uint i = 0; i < results.Length; i++) {
+        State::tmxSearchResults.InsertLast(results[i]);
+    }
     
     State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
     for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);

@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CDownloadCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CReplayWR.RecordTime%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
@@ -34,10 +34,19 @@ namespace TMX {
         // User-Agent is strictly mandatory for TMX to avoid 403s
         req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
         req.Headers["Accept"] = "application/json";
+        trace("[TMX] Requesting: " + url);
 
         req.Method = Net::HttpMethod::Get;
         req.Start();
-        while (!req.Finished()) yield();
+        uint64 start = Time::Now;
+        while (!req.Finished()) {
+            if (Time::Now > start + 10000) { // 10s Timeout
+                req.Cancel();
+                warn("TMX API Timeout (10s): " + url);
+                return null;
+            }
+            yield();
+        }
         if (req.ResponseCode() >= 400) {
             warn("TMX API Error [" + req.ResponseCode() + "]:  (URL: " + url + ")");
             return null;
@@ -106,10 +115,8 @@ namespace TMX {
         if (afterId > 0) params += "&after=" + tostring(afterId);
         if (offset > 0) params += "&skip=" + tostring(offset);
         
-        // Optimize complex queries that 500 on TMX side (Pagination + Awards + Not TOTD)
-        if (f.InTOTD == 0 && f.SortPrimary == 0) {
-            params += "&awardsmin=1";
-        }
+        // TMX V1 stability: Large offsets can be slow, but awardsmin=1 sometimes 400s or returns 0.
+        // if (f.SortPrimary == 0) params += "&awardsmin=1"; 
         
         // Selective difficulty: TMX only supports one value. If multiple are selected, 
         // we omit it in the API and let FilterTmxResults handle it client-side.
@@ -156,7 +163,7 @@ namespace TMX {
             params += "&collection=" + tostring(f.InCollection);
         }
         
-        // trace("[TMX] Search Params: " + params);
+        trace("[TMX] Search Params: " + params);
         Json::Value@ json = TmxSearch(params, useCache);
         if (json is null) {
             warn("[TMX] Search returned null.");

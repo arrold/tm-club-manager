@@ -118,7 +118,6 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
             for (uint j = 0; j < State::ClubActivities.Length; j++) {
                 if (State::ClubActivities[j].Id == a.Id && State::ClubActivities[j].HasMapChanges) {
                     @toAdd = State::ClubActivities[j];
-                    // trace("Preserving buffered activity: " + toAdd.Name);
                     break;
                 }
             }
@@ -525,6 +524,7 @@ void DoAuditSubscription(ref@ r) {
     
     // Calculate Diff
     for (uint i = 0; i < results.Length; i++) {
+        if (i % 20 == 0) yield();
         bool found = false;
         for (uint j = 0; j < a.Maps.Length; j++) {
             if (a.Maps[j].Uid == results[i].Uid) { found = true; break; }
@@ -533,6 +533,7 @@ void DoAuditSubscription(ref@ r) {
     }
     
     for (uint i = 0; i < a.Maps.Length; i++) {
+        if (i % 20 == 0) yield();
         bool found = false;
         for (uint j = 0; j < results.Length; j++) {
             if (results[j].Uid == a.Maps[i].Uid) { found = true; break; }
@@ -573,6 +574,7 @@ void DoApplyAudit(ref@ r) {
     
     string[] newUids;
     for (uint i = 0; i < a.AuditFullUidList.Length; i++) {
+        if (i % 10 == 0) yield();
         string uid = a.AuditFullUidList[i];
         if (!Nadeo::IsMapUploaded(uid)) {
             Nadeo::RegisterMap(uid);
