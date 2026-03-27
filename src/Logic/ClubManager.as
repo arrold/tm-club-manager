@@ -6,14 +6,14 @@ void RefreshClubs() {
     State::lastClubRefresh = Time::Now;
 
     // trace("Refreshing clubs...");
-    Club[] items;
+    Club@[] items;
 
     Json::Value@ resp = API::GetMyClubs(100, 0);
     if (resp !is null && resp.HasKey("clubList")) {
         Json::Value@ list = resp["clubList"];
         // trace("Raw API Result: " + list.Length + " clubs found.");
         for (uint i = 0; i < list.Length; i++) {
-            Club c(list[i]);
+            Club@ c = Club(list[i]);
             if (c.Id != 0) items.InsertLast(c);
         }
     } else {
@@ -31,7 +31,7 @@ void RefreshActivities() {
     uint clubId = State::SelectedClub.Id;
     
     // trace("Refreshing activities for club " + clubId);
-    Activity[] items;
+    Activity@[] items;
     FetchActivitiesForStatus(clubId, true, items);
     
     string role = State::SelectedClub.Role.ToUpper();
@@ -56,7 +56,7 @@ void RefreshActiveActivities() {
     State::isInitialised = true;
     
     uint[] toFetch;
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     for (uint i = 0; i < items.Length; i++) {
         Activity@ a = items[i];
         if (a.Type == "folder" || a.Type == "news") continue;
@@ -103,12 +103,12 @@ void RunEagerMetadataFetch(ref@ r) {
     }
 }
 
-void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
+void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
     Json::Value@ resp = API::GetClubActivities(clubId, active, 100, 0);
     if (resp !is null && resp.HasKey("activityList")) {
         Json::Value@ list = resp["activityList"];
         for (uint i = 0; i < list.Length; i++) {
-            Activity a(list[i]);
+            Activity@ a = Activity(list[i]);
             
             // Re-use existing activity handle if it has unsaved changes
             Activity@ toAdd = a;
@@ -358,14 +358,16 @@ void LoadActivityMaps(ref@ r) {
 
                 if (list !is null) {
                     for (uint k = 0; k < list.Length; k++) {
-                        a.Maps.InsertLast(MapInfo(list[k]));
+                        MapInfo@ mi = MapInfo(list[k]);
+                        a.Maps.InsertLast(mi);
+                        AuditCache::Register(mi);
                     }
                 }
             }
         }
 
         // Important: API might return maps in different order. Reorder a.Maps to match 'uids' array.
-        MapInfo[] ordered;
+        MapInfo@[] ordered;
         for (uint i = 0; i < uids.Length; i++) {
             for (uint j = 0; j < a.Maps.Length; j++) {
                 if (a.Maps[j].Uid == uids[i]) {
@@ -483,12 +485,21 @@ void DoAuditSubscription(ref@ r) {
     a.AuditOrderMismatch = false;
     
     Notify("Auditing subscription for " + a.Name + "...");
-    // trace("Audit filters for " + a.Name + ": Name=" + sub.Filters.MapName + ", Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
     
-    // Audits should respect the page stored in the subscription filters.
-    TmxMap[] results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
+    TmxMap@[] results;
+    if (sub.SourceType == 1) { // Local List
+        results = CustomLists::GetMaps(sub.ListId);
+        if (results.Length > sub.MapLimit) {
+            TmxMap@[] sliced;
+            for (uint i = 0; i < sub.MapLimit; i++) sliced.InsertLast(results[i]);
+            results = sliced;
+        }
+    } else { // TMX Search
+        results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
+    }
+
     if (results.Length == 0) {
-        Notify("Audit failed: No maps found on TMX.");
+        Notify("Audit failed: No maps found in source (" + (sub.SourceType == 1 ? "Local List: " + sub.ListId : "TMX Search") + ").");
         a.IsAuditing = false;
         return;
     }
@@ -661,7 +672,7 @@ void DoBulkAudit() {
     State::bulkAuditUpdatesAvailable = 0;
     State::bulkAuditProgress = 0.0f;
     
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     uint total = 0;
     for (uint i = 0; i < items.Length; i++) {
         if (Subscriptions::GetByActivity(items[i].Id) !is null) total++;
@@ -724,7 +735,7 @@ void DoBulkApply() {
     State::bulkAuditInProgress = true;
     State::bulkAuditProgress = 0.0f;
     
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     uint total = 0;
     for (uint i = 0; i < items.Length; i++) {
         if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {

@@ -34,6 +34,7 @@ namespace TMX {
         // User-Agent is strictly mandatory for TMX to avoid 403s
         req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
         req.Headers["Accept"] = "application/json";
+
         req.Method = Net::HttpMethod::Get;
         req.Start();
         while (!req.Finished()) yield();
@@ -100,14 +101,15 @@ namespace TMX {
  * - ExcludeTags: maps that MUST NOT have these tags.
  * Also implements guardrails for "Awards Most" sorting to prevent 500 errors on the TMX side.
  */
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true) {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "") {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
         // Priority filters first for TMX V1 stability
         if (f.InTOTD == 1) params += "&intotd=1";
         else if (f.InTOTD == 0) params += "&intotd=0";
 
-        if (f.AuthorName != "") params += "&author=" + Net::UrlEncode(f.AuthorName);
+        string author = authorOverride != "" ? authorOverride : (f.AuthorNames.Length > 0 ? f.AuthorNames[0] : "");
+        if (author != "") params += "&author=" + Net::UrlEncode(author);
         if (f.MapName != "") params += "&name=" + Net::UrlEncode(f.MapName);
         
         if (afterId > 0) params += "&after=" + tostring(afterId);
@@ -192,5 +194,34 @@ namespace TMX {
                 return;
             }
         }
+    }
+
+    /* User List Endpoints */
+
+    Json::Value@ GetFavorites(uint limit = 100, uint offset = 0) {
+        return TmxRequest("https://trackmania.exchange/api/favorites/get_maps?count=" + limit + "&skip=" + offset, true);
+    }
+
+    Json::Value@ GetPlayLater(uint limit = 100, uint offset = 0) {
+        return TmxRequest("https://trackmania.exchange/api/playlater/get_maps?count=" + limit + "&skip=" + offset, true);
+    }
+
+    Json::Value@ GetSetMaps(int setId, uint limit = 100, uint offset = 0) {
+        return TmxRequest("https://trackmania.exchange/api/set/get_maps?id=" + setId + "&count=" + limit + "&skip=" + offset, true);
+    }
+
+    bool AddFavorite(int trackId) {
+        // TMX Auth disabled. Use Local Lists.
+        return false;
+    }
+
+    bool RemoveFavorite(int trackId) {
+        // Functionality moved to TMX website or official plugin
+        return false;
+    }
+
+    void DoAddFavorite(int64 trackId) {
+        // Redirected to Local Lists
+        Notify("TMX Auth disabled. Use Local Lists instead.");
     }
 }

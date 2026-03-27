@@ -4,8 +4,8 @@
 namespace State {
     // Selection State
     Club@ SelectedClub;
-    Activity[] ClubActivities;
-    Club[] MyClubs;
+    Activity@[] ClubActivities;
+    Club@[] MyClubs;
     Activity@ PersonalTracksProxy;
 
     // Refresh State
@@ -22,7 +22,7 @@ namespace State {
 
     // TMX / Curation State
     TmxSearchFilters tmxFilters;
-    TmxMap[] tmxSearchResults;
+    TmxMap@[] tmxSearchResults;
     bool[] tmxSelected;
     Activity@ TargetActivity;
     bool searchInProgress = false;
@@ -44,4 +44,13 @@ namespace State {
     uint[] reorderIds;
     uint64 lastActionTime = 0;
     uint nextRoomMirrorCampaignId = 0;
+
+    // List Management State
+    TmxMap@[] Favorites;
+    TmxMap@[] PlayLater;
+    string[] CustomListNames;
+    TmxMap@[] CustomListMaps; // Maps in the currently selected custom list
+    string SelectedListId = "";
+    string SelectedListType = ""; // "favorites", "playlater", "custom"
+    bool refreshingLists = false;
 }

@@ -57,6 +57,9 @@ namespace Subscriptions {
             existing.MapLimit = sub.MapLimit;
             existing.ActivityName = sub.ActivityName;
             existing.ClubId = sub.ClubId;
+            existing.SourceType = sub.SourceType;
+            existing.ListId = sub.ListId;
+            existing.ListType = sub.ListType;
         } else {
             All.InsertLast(sub);
         }

@@ -35,7 +35,20 @@ class CurationTab : Tab {
         UI::PushItemWidth(150);
         f.MapName = UI::InputText("Map Name", f.MapName);
         UI::SameLine();
-        f.AuthorName = UI::InputText("Author", f.AuthorName);
+        
+        string authorBuffer = string::Join(f.AuthorNames, ", ");
+        string newAuthorBuffer = UI::InputText("Author(s)", authorBuffer);
+        if (UI::IsItemHovered()) UI::SetTooltip("Use comma-separated names for multi-author search\nExample: hf.Zertrov, simon.tm");
+        
+        if (newAuthorBuffer != authorBuffer) {
+            f.AuthorNames.RemoveRange(0, f.AuthorNames.Length);
+            string[] split = newAuthorBuffer.Split(",");
+            for (uint i = 0; i < split.Length; i++) {
+                string s = split[i].Trim();
+                if (s != "") f.AuthorNames.InsertLast(s);
+            }
+        }
+
         UI::SameLine();
         UI::PushItemWidth(100);
         f.ResultLimit = uint(UI::InputInt("Maps per Page", int(f.ResultLimit)));
@@ -326,6 +339,7 @@ class CurationTab : Tab {
                 UI::Text(tostring(m.TrackId));
                 UI::TableNextColumn();
                 UI::Text(m.Name);
+                MetadataOverrides::RenderOverrideMenu(m);
                 UI::TableNextColumn();
                 UI::Text(m.Author);
                 UI::TableNextColumn();
@@ -350,6 +364,22 @@ class CurationTab : Tab {
                 UI::TableNextColumn();
                 if (UI::Button(Icons::ExternalLink + "##tmx" + i)) {
                     OpenBrowserURL("https://trackmania.exchange/maps/" + m.TrackId);
+                }
+                UI::SameLine();
+                if (UI::Button(Icons::Plus + "##addlist" + i)) {
+                    UI::OpenPopup("AddToListPopup" + i);
+                }
+                if (UI::BeginPopup("AddToListPopup" + i)) {
+                    UI::TextDisabled("Add to Local List:");
+                    for (uint j = 0; j < State::CustomListNames.Length; j++) {
+                        if (UI::MenuItem(State::CustomListNames[j])) {
+                            CustomLists::Add(State::CustomListNames[j], m);
+                        }
+                    }
+                    if (State::CustomListNames.Length == 0) {
+                        UI::TextDisabled("(No lists found)");
+                    }
+                    UI::EndPopup();
                 }
             }
             UI::EndTable();

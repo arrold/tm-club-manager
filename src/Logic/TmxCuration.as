@@ -7,13 +7,17 @@
  * results. It also handles client-side filtering for attributes TMX cannot 
  * natively filter (e.g., precise time ranges or multi-tag combinations).
  */
-TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true) {
-    TmxMap[] allResults;
+TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true) {
+    if (f.AuthorNames.Length > 1) {
+        return FetchMultiAuthor(f, limit, applyOffset, useCache);
+    }
+
+    TmxMap@[] allResults;
     uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
     uint totalNeeded = skipCount + limit;
     
     // Optimization: if no client-side only filters are active, we can jump straight to the offset
-    bool hasClientFilters = f.MapName != "" || f.AuthorName != "" || f.TimeFromMs > 0 || f.TimeToMs > 0;
+    bool hasClientFilters = f.MapName != "" || f.AuthorNames.Length > 0 || f.TimeFromMs > 0 || f.TimeToMs > 0;
     uint offset = hasClientFilters ? 0 : skipCount;
     uint lastId = 0;
     
@@ -21,7 +25,7 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     while (allResults.Length < totalNeeded) {
         Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache);
         int fetchedCount = 0;
-        TmxMap[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
+        TmxMap@[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
         for (uint i = 0; i < batch.Length; i++) {
             if (allResults.Length < totalNeeded) {
@@ -44,8 +48,8 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
         yield(); // Let the UI breathe
     }
     
-    // Slice only the requested page
-    TmxMap[] pageResults;
+    // Slice only the requested
+    TmxMap@[] pageResults;
     if (allResults.Length > skipCount) {
         for (uint i = skipCount; i < allResults.Length; i++) {
             pageResults.InsertLast(allResults[i]);
@@ -56,14 +60,90 @@ TmxMap[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset =
     return pageResults;
 }
 
+TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bool useCache) {
+    TmxMap@[] merged;
+    uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
+    // Fetch a bit more per author to ensure better sorting of the merged list
+    uint totalNeeded = Math::Max(skipCount + limit, uint(100)); 
+    
+    // For each author, fetch up to totalNeeded maps
+    for (uint i = 0; i < f.AuthorNames.Length; i++) {
+        string author = f.AuthorNames[i];
+        TmxMap@[] authorResults;
+        uint lastId = 0;
+        uint offset = 0;
+        uint batchSize = 50;
+
+        while (authorResults.Length < totalNeeded) {
+            Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache, author);
+            int fetchedCount = 0;
+            TmxMap@[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
+            for (uint j = 0; j < batch.Length; j++) authorResults.InsertLast(batch[j]);
+            
+            if (fetchedCount < int(batchSize)) break;
+            if (batch.Length > 0) {
+                lastId = batch[batch.Length - 1].TrackId;
+                offset = 0;
+            } else {
+                offset += fetchedCount;
+            }
+            yield();
+        }
+        
+        for (uint j = 0; j < authorResults.Length; j++) merged.InsertLast(authorResults[j]);
+    }
+
+    // Client-side Sort
+    SortMaps(merged, f.SortPrimary);
+
+    // Slice
+    TmxMap@[] pageResults;
+    if (merged.Length > skipCount) {
+        uint pageLimit = skipCount + limit;
+        uint maxIdx = uint(Math::Min(int(merged.Length), int(pageLimit)));
+        for (uint i = skipCount; i < maxIdx; i++) {
+            pageResults.InsertLast(merged[i]);
+        }
+    }
+    
+    if (f.AuthorNames.Length > 1) {
+        Notify("Multi-Mapper Search: Aggregated " + merged.Length + " maps from " + f.AuthorNames.Length + " mappers.");
+    }
+    return pageResults;
+}
+
+void SortMaps(TmxMap@[]& arr, int sortIdx) {
+    if (arr.Length < 2) return;
+    if (sortIdx < 0 || sortIdx > 7) return; 
+    for (uint i = 0; i < arr.Length; i++) {
+        if (i % 20 == 0) yield(); // Yield to keep game responsive during O(n^2) sort
+        for (uint j = i + 1; j < arr.Length; j++) {
+            bool swap = false;
+            switch (sortIdx) {
+                case 0: swap = arr[i].AwardCount < arr[j].AwardCount; break; // Awards Most
+                case 1: swap = arr[i].AwardCount > arr[j].AwardCount; break; // Awards Least
+                case 2: swap = arr[i].Difficulty > arr[j].Difficulty; break; // Easiest
+                case 3: swap = arr[i].Difficulty < arr[j].Difficulty; break; // Hardest
+                case 4: swap = arr[i].Name > arr[j].Name; break; // A-Z
+                case 5: swap = arr[i].Name < arr[j].Name; break; // Z-A
+                case 6: swap = arr[i].UploadedAt < arr[j].UploadedAt; break; // Newest
+                case 7: swap = arr[i].UploadedAt > arr[j].UploadedAt; break; // Oldest
+            }
+            if (swap) {
+                TmxMap@ temp = arr[i]; @arr[i] = arr[j]; @arr[j] = temp;
+            }
+        }
+    }
+}
+
 /*
  * Client-Side Result Filtering:
  * Applies secondary validation logic to TMX search results. 
  * This includes multi-difficulty matching, primary surface/tag isolation, 
  * and author time range validation. 
  */
-TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requestedCount, int&out fetchedCount) {
-    TmxMap[] filtered;
+TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requestedCount, int&out fetchedCount) {
+    TmxMap@[] filtered;
     fetchedCount = 0;
 
     if (json is null) return filtered;
@@ -98,17 +178,22 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
         }
 
         // Optional: Primary Tag (First tag out of all tags)
-        if (f.PrimaryTagOnly && f.IncludeTags.Length > 0) {
+        if (f.PrimaryTagOnly) {
             if (m.Tags.Length == 0) continue;
-            bool found = false;
-            for (uint j = 0; j < f.IncludeTags.Length; j++) {
-                if (m.Tags[0] == f.IncludeTags[j]) { found = true; break; }
+            string primary = m.Tags[0];
+            if (f.PrimaryTag != "") {
+                if (primary.ToLower() != f.PrimaryTag.ToLower()) continue;
+            } else if (f.IncludeTags.Length > 0) {
+                bool found = false;
+                for (uint j = 0; j < f.IncludeTags.Length; j++) {
+                    if (primary == f.IncludeTags[j]) { found = true; break; }
+                }
+                if (!found) continue;
             }
-            if (!found) continue;
         }
         
         // Optional: Primary Surface (First tag that is a surface)
-        if (f.PrimarySurfaceOnly && f.IncludeTags.Length > 0) {
+        if (f.PrimarySurfaceOnly) {
             string firstSurface = "";
             for (uint j = 0; j < m.Tags.Length; j++) {
                 if (TMX::ArrayContains(TMX::SURFACE_TAGS, m.Tags[j])) {
@@ -117,17 +202,26 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
                 }
             }
             if (firstSurface == "") continue;
-            bool found = false;
-            for (uint j = 0; j < f.IncludeTags.Length; j++) {
-                if (firstSurface == f.IncludeTags[j]) { found = true; break; }
+            
+            if (f.PrimarySurface != "") {
+                if (firstSurface.ToLower() != f.PrimarySurface.ToLower()) continue;
+            } else if (f.IncludeTags.Length > 0) {
+                bool found = false;
+                for (uint j = 0; j < f.IncludeTags.Length; j++) {
+                    if (firstSurface == f.IncludeTags[j]) { found = true; break; }
+                }
+                if (!found) continue;
             }
-            if (!found) continue;
         }
 
         // Author Time Range Filter (Client-side safeguard)
         uint lengthMs = m.LengthSecs * 1000;
         if (f.TimeFromMs > 0 && lengthMs < f.TimeFromMs) continue;
         if (f.TimeToMs > 0 && lengthMs > f.TimeToMs) continue;
+
+        // Room Guardrails (General)
+        if (m.EmbeddedItemsSize > f.ItemSizeLimit || m.DisplayCost > f.DisplayCostLimit) continue;
+        if (m.ServerSizeExceeded) continue; // Always omit oversized for safety
 
         // Multi-State Limit Filter Guardrails
         if (f.LimitFilter >= 1) {
@@ -139,6 +233,7 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
             if (m.EmbeddedItemsSize > 1000000 || m.DisplayCost > 8000) continue;
         }
 
+        AuditCache::Register(m);
         filtered.InsertLast(m);
         if (filtered.Length >= requestedCount) break;
     }
@@ -147,7 +242,7 @@ TmxMap[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requested
 }
 
 void DoTmxSearch() {
-    TmxSearchFilters@ f = State::tmxFilters;
+    TmxSearchFilters@ f = State::tmxFilters.Clone();
     State::searchInProgress = true;
     
     if (f.CurrentPage < 1) f.CurrentPage = 1;
