@@ -24,6 +24,25 @@ namespace ConfigImporter {
         // trace("[Importer] " + msg);
     }
 
+    class DeltaSummary {
+        uint FoldersCreated = 0;
+        uint FoldersVerified = 0;
+        uint ActivitiesCreated = 0;
+        uint ActivitiesUpdated = 0;
+        uint ActivitiesVerified = 0;
+        uint SubscriptionsUpdated = 0;
+        uint Warnings = 0;
+
+        string ToLogString() {
+            return "Summary: Folders: " + FoldersCreated + " Created, " + FoldersVerified + " Verified | " +
+                   "Activities: " + ActivitiesCreated + " Created, " + ActivitiesUpdated + " Updated, " + ActivitiesVerified + " Verified | " +
+                   "Subscriptions: " + SubscriptionsUpdated + " Updated | " +
+                   "Warnings: " + Warnings;
+        }
+    }
+
+    DeltaSummary@ currentDelta;
+
     void Import(Json::Value@ config, bool isDryRun = false) {
         if (isImporting) return;
         if (State::SelectedClub is null) {
@@ -33,6 +52,7 @@ namespace ConfigImporter {
 
         isImporting = true;
         dryRun = isDryRun;
+        @currentDelta = DeltaSummary();
         log.RemoveRange(0, log.Length);
         Log("Starting " + (dryRun ? "DRY RUN " : "") + "import for Club: " + State::SelectedClub.Name);
 
@@ -40,9 +60,11 @@ namespace ConfigImporter {
         string targetClubName = JsonGetString(config, "clubName");
         if (targetClubName == "") {
             Log("Warning: No 'clubName' field found in JSON. Proceeding with caution.");
+            currentDelta.Warnings++;
         } else if (targetClubName != State::SelectedClub.Name) {
             Log("CRITICAL ERROR: Configuration is intended for club '" + targetClubName + "' but you have '" + State::SelectedClub.Name + "' selected.");
             Log("Import aborted for safety.");
+            currentDelta.Warnings++;
             isImporting = false;
             return;
         }
@@ -50,15 +72,15 @@ namespace ConfigImporter {
         // 1. Discovery
         Activity@[] existing;
         FetchAllExisting(State::SelectedClub.Id, existing);
-        Log("Found " + existing.Length + " existing activities.");
+        // Log("Found " + existing.Length + " existing activities.");
 
         bool prune = JsonGetBool(config, "prune", false);
         
-        // 2. Process Folders first (to establish parentage)
+        // 2. Process Folders first
         if (config.HasKey("folders") && config["folders"].GetType() == Json::Type::Array) {
             Json::Value@ folders = config["folders"];
             for (uint i = 0; i < folders.Length; i++) {
-                ProcessFolder(folders[i], existing);
+                ProcessFolder(folders[i], 0, existing);
             }
         }
 
@@ -72,11 +94,16 @@ namespace ConfigImporter {
 
         // 4. Pruning (if enabled)
         if (prune) {
-            // TODO: Implement pruning logic if needed
             Log("Pruning is enabled but not yet fully implemented for safety.");
         }
 
         Log("Import complete.");
+        Log(currentDelta.ToLogString());
+        
+        if (currentDelta.FoldersCreated == 0 && currentDelta.ActivitiesCreated == 0 && currentDelta.ActivitiesUpdated == 0 && currentDelta.SubscriptionsUpdated == 0) {
+            Log("Result: 0 Changes Pending. Local state perfectly matches remote.");
+        }
+
         isImporting = false;
         UI::ShowNotification("Importer", "Import complete. See log for details.");
     }
@@ -86,38 +113,46 @@ namespace ConfigImporter {
         FetchActivitiesForStatus(clubId, false, items);
     }
 
-    void ProcessFolder(Json::Value@ json, Activity@[]& existing) {
+    void ProcessFolder(Json::Value@ json, uint parentFolderId, Activity@[]& existing) {
         string name = JsonGetString(json, "name");
         if (name == "") return;
 
-        Activity@ folder = FindExisting(name, "folder", 0, existing);
+        Activity@ folder = FindExisting(name, "folder", parentFolderId, existing);
         uint folderId = 0;
 
         if (folder is null) {
             Log("Creating folder: " + name);
+            currentDelta.FoldersCreated++;
             if (!dryRun) {
-                Json::Value@ resp = API::CreateClubActivity(State::SelectedClub.Id, name, "folder", 0, true);
+                Json::Value@ resp = API::CreateClubActivity(State::SelectedClub.Id, name, "folder", parentFolderId, true);
                 if (resp !is null) {
                     folderId = JsonGetUint(resp, "id");
                     if (folderId == 0) folderId = JsonGetUint(resp, "activityId");
                 }
             } else {
-                folderId = 999999; // Mock ID for dry run
+                folderId = 999999 + currentDelta.FoldersCreated; // Mock ID
             }
         } else {
             folderId = folder.Id;
-            Log("Found existing folder: " + name + " (ID: " + folderId + ")");
+            currentDelta.FoldersVerified++;
+            // Log("Found existing folder: " + name);
         }
 
         if (folderId == 0) {
             Log("Error: Failed to resolve ID for folder: " + name);
+            currentDelta.Warnings++;
             return;
         }
 
         if (json.HasKey("activities") && json["activities"].GetType() == Json::Type::Array) {
-            Json::Value@ activities = json["activities"];
-            for (uint i = 0; i < activities.Length; i++) {
-                ProcessActivity(activities[i], folderId, existing);
+            Json::Value@ items = json["activities"];
+            for (uint i = 0; i < items.Length; i++) {
+                string type = JsonGetString(items[i], "type");
+                if (type == "folder") {
+                    ProcessFolder(items[i], folderId, existing);
+                } else {
+                    ProcessActivity(items[i], folderId, existing);
+                }
             }
         }
     }
@@ -132,6 +167,7 @@ namespace ConfigImporter {
 
         if (act is null) {
             Log("Creating " + type + ": " + name);
+            currentDelta.ActivitiesCreated++;
             if (!dryRun) {
                 bool active = JsonGetBool(json, "active", true);
                 uint mirrorId = JsonGetUint(json, "mirrorCampaignId", 0);
@@ -141,25 +177,31 @@ namespace ConfigImporter {
                     if (actId == 0) actId = JsonGetUint(resp, "activityId");
                 }
             } else {
-                actId = 999999;
+                actId = 888888 + currentDelta.ActivitiesCreated;
             }
         } else {
             actId = act.Id;
-            Log("Found existing " + type + ": " + name + " (ID: " + actId + ")");
-            // Check for updates (active status, mirror ID etc.)
+            bool changed = false;
+            
+            // Check for updates
             bool active = JsonGetBool(json, "active", true);
             if (act.Active != active) {
                 Log("Updating active status for " + name);
                 if (!dryRun) API::SetActivityStatus(State::SelectedClub.Id, actId, active);
+                changed = true;
             }
             if (act.FolderId != folderId) {
                 Log("Moving " + name + " to folder " + folderId);
                 if (!dryRun) API::MoveActivity(State::SelectedClub.Id, actId, folderId);
+                changed = true;
             }
+
+            if (changed) currentDelta.ActivitiesUpdated++;
+            else currentDelta.ActivitiesVerified++;
         }
 
         if (actId > 0 && json.HasKey("subscription")) {
-            ApplySubscription(actId, name, json["subscription"]);
+            ApplySubscription(actId, name, json["subscription"], act);
         }
     }
 
@@ -172,8 +214,7 @@ namespace ConfigImporter {
         return null;
     }
 
-    void ApplySubscription(uint activityId, const string &in activityName, Json::Value@ json) {
-        Log("Applying subscription for: " + activityName);
+    void ApplySubscription(uint activityId, const string &in activityName, Json::Value@ json, Activity@ existingAct) {
         Subscription@ sub = Subscription();
         sub.ClubId = State::SelectedClub.Id;
         sub.ActivityId = activityId;
@@ -189,7 +230,22 @@ namespace ConfigImporter {
         }
         
         sub.MapLimit = JsonGetUint(json, "mapLimit", 25);
-        if (!dryRun) Subscriptions::Add(sub);
-        else Log("Dry Run: Skipping subscription persistence.");
+
+        // Check for updates if we have an existing activity
+        bool needsUpdate = true;
+        if (existingAct !is null) {
+            Subscription@ existingSub = Subscriptions::GetByActivity(existingAct.Id);
+            if (existingSub !is null) {
+                // Simplified comparison: if we are importing, we assume the user wants THIS subscription state.
+                // We'll mark it as updated for transparency.
+            }
+        }
+
+        currentDelta.SubscriptionsUpdated++;
+        if (!dryRun) {
+            Subscriptions::Add(sub);
+        } else {
+            // Log("Dry Run: Subscription update pending for " + activityName);
+        }
     }
 }

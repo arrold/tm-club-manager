@@ -263,6 +263,7 @@ class ClubsTab : Tab {
         if (a.IsRenaming) {
             UI::SetNextItemWidth(200);
             a.RenameBuffer = UI::InputText("##rename", a.RenameBuffer);
+            if (a.Type == "news" && a.RenameBuffer.Length > 20) a.RenameBuffer = a.RenameBuffer.SubStr(0, 20);
             UI::SameLine();
             if (UI::Button(Icons::Check + "##confirm")) { 
                 if (a.RenameBuffer != "") { startnew(DoRenameActivity, a); a.IsRenaming = false; }
@@ -388,13 +389,21 @@ class ClubsTab : Tab {
 
     void DisplayActivityContent(Activity@ a) {
         if (a.Type == "news") {
-            if (!a.NewsLoaded && !a.LoadingMaps) { a.LoadingMaps = true; startnew(LoadActivityDetails, a); }
-        } else if (!a.MapsLoaded && !a.LoadingMaps && a.Type != "folder") {
+            if (!a.NewsLoaded && !a.LoadingMaps && !a.Failed) { a.LoadingMaps = true; startnew(LoadActivityDetails, a); }
+        } else if (!a.MapsLoaded && !a.LoadingMaps && a.Type != "folder" && !a.Failed) {
             a.LoadingMaps = true; startnew(LoadActivityMaps, a);
         }
 
         if (a.LoadingMaps) {
-            UI::TextDisabled("Loading content...");
+            UI::TextDisabled(Icons::Spinner + " Loading content...");
+        } else if (a.Failed) {
+            UI::Text("\\$f00" + Icons::ExclamationTriangle + " Failed to load metadata.");
+            UI::SameLine();
+            if (UI::Button(Icons::Refresh + " Retry##" + a.Id)) {
+                a.Failed = false;
+                if (a.Type == "news") startnew(LoadActivityDetails, a);
+                else startnew(LoadActivityMaps, a);
+            }
         } else {
             if (a.Type == "campaign" || a.Type == "room") {
                 bool isMirrored = a.Type == "room" && a.MirrorCampaignId > 0;
@@ -487,9 +496,11 @@ class ClubsTab : Tab {
                 }
             }
  else if (a.Type == "news") {
-                a.Headline = UI::InputText("Headline", a.Headline);
-                a.Body = UI::InputTextMultiline("Body", a.Body, vec2(0, 150));
-                if (UI::Button(Icons::FloppyO + " Save News")) startnew(DoSaveNews, a);
+                a.Headline = UI::InputText("News Headline (max 26 chars)", a.Headline);
+                if (a.Headline.Length > 26) a.Headline = a.Headline.SubStr(0, 26);
+                a.Body = UI::InputTextMultiline("News Body (max 1986 chars)", a.Body, vec2(0, 100));
+                if (a.Body.Length > 1986) a.Body = a.Body.SubStr(0, 1986);
+                if (UI::Button(Icons::FloppyO + " Save News Content")) startnew(DoSaveNews, a);
             }
             if (a.Type == "room" && a.MirrorCampaignId > 0) {
                 // Mirrored rooms do not support manual curation or subscriptions
@@ -663,13 +674,8 @@ void RunImportFlow() {
         return;
     }
     
-    if (tab.availableConfigs.Length == 1) {
-        tab.selectedConfig = tab.availableConfigs[0];
-        startnew(RunImportFlowInternal, tab.selectedConfig);
-    } else {
-        tab.selectedConfig = "";
-        tab.showImportModal = true;
-    }
+    tab.selectedConfig = "";
+    tab.showImportModal = true;
 }
 
 void CommitImportFlow() {

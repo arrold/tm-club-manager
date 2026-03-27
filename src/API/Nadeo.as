@@ -81,6 +81,10 @@ namespace API {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId);
     }
 
+    Json::Value@ GetClubNews(uint clubId, uint newsId) {
+        return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/news/" + newsId);
+    }
+
     Json::Value@ GetClubDetails(uint clubId) {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId);
     }
@@ -123,6 +127,10 @@ namespace API {
 
     Json::Value@ EditClubActivity(uint clubId, uint activityId, Json::Value@ data) {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
+    }
+
+    Json::Value@ EditClubNews(uint clubId, uint newsId, Json::Value@ data) {
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/news/" + newsId + "/edit", data);
     }
 
     Json::Value@ MoveActivity(uint clubId, uint activityId, uint newFolderId) {

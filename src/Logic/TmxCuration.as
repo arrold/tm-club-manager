@@ -57,6 +57,7 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     }
     
     // trace("[TMX] Scan complete. Found " + allResults.Length + " maps total. Returning page offset " + skipCount);
+    yield();
     return pageResults;
 }
 
@@ -114,7 +115,7 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
 
 void SortMaps(TmxMap@[]& arr, int sortIdx) {
     if (arr.Length < 2) return;
-    if (sortIdx < 0 || sortIdx > 7) return; 
+    if (sortIdx < 0 || sortIdx > 9) return; 
     for (uint i = 0; i < arr.Length; i++) {
         if (i % 20 == 0) yield(); // Yield to keep game responsive during O(n^2) sort
         for (uint j = i + 1; j < arr.Length; j++) {
@@ -122,12 +123,14 @@ void SortMaps(TmxMap@[]& arr, int sortIdx) {
             switch (sortIdx) {
                 case 0: swap = arr[i].AwardCount < arr[j].AwardCount; break; // Awards Most
                 case 1: swap = arr[i].AwardCount > arr[j].AwardCount; break; // Awards Least
-                case 2: swap = arr[i].Difficulty > arr[j].Difficulty; break; // Easiest
-                case 3: swap = arr[i].Difficulty < arr[j].Difficulty; break; // Hardest
-                case 4: swap = arr[i].Name > arr[j].Name; break; // A-Z
-                case 5: swap = arr[i].Name < arr[j].Name; break; // Z-A
-                case 6: swap = arr[i].UploadedAt < arr[j].UploadedAt; break; // Newest
-                case 7: swap = arr[i].UploadedAt > arr[j].UploadedAt; break; // Oldest
+                case 2: swap = arr[i].DownloadCount < arr[j].DownloadCount; break; // Downloads Most
+                case 3: swap = arr[i].DownloadCount > arr[j].DownloadCount; break; // Downloads Least
+                case 4: swap = arr[i].Difficulty > arr[j].Difficulty; break; // Easiest
+                case 5: swap = arr[i].Difficulty < arr[j].Difficulty; break; // Hardest
+                case 6: swap = arr[i].Name > arr[j].Name; break; // A-Z
+                case 7: swap = arr[i].Name < arr[j].Name; break; // Z-A
+                case 8: swap = arr[i].UploadedAt < arr[j].UploadedAt; break; // Newest
+                case 9: swap = arr[i].UploadedAt > arr[j].UploadedAt; break; // Oldest
             }
             if (swap) {
                 TmxMap@ temp = arr[i]; @arr[i] = arr[j]; @arr[j] = temp;
@@ -157,6 +160,7 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
 
     fetchedCount = results.Length;
     for (uint i = 0; i < results.Length; i++) {
+        if (i % 10 == 0) yield(); // Yield to prevent UI hang during large JSON processing
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
 

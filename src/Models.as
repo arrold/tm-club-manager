@@ -118,6 +118,7 @@ class Activity {
     bool PendingDelete = false;
     bool IsManagingMaps = false;
     bool HasMapChanges = false;
+    bool Failed = false;
     
     // News specific
     string Headline;
@@ -180,6 +181,7 @@ class TmxMap {
     int Difficulty; // 1-6 (Normalised for internal comparisons)
     string DifficultyName;
     uint AwardCount;
+    uint DownloadCount;
     uint RecordCount;
     bool AtBeaten;
     string SizeWarning;
@@ -235,6 +237,7 @@ class TmxMap {
         }
 
         AwardCount = json.HasKey("AwardCount") ? uint(json["AwardCount"]) : 0;
+        DownloadCount = json.HasKey("DownloadCount") ? uint(json["DownloadCount"]) : 0;
         RecordCount = json.HasKey("ReplayCount") ? uint(json["ReplayCount"]) : (json.HasKey("RecordCount") ? uint(json["RecordCount"]) : 0);
 
         ServerSizeExceeded = json.HasKey("ServerSizeExceeded") ? bool(json["ServerSizeExceeded"]) : false;
@@ -297,6 +300,7 @@ class TmxMap {
         json["Difficulty"] = Difficulty - 1;
         json["DifficultyName"] = DifficultyName;
         json["AwardCount"] = AwardCount;
+        json["DownloadCount"] = DownloadCount;
         return json;
     }
 }
@@ -596,6 +600,7 @@ class TmxSearchFilters {
         json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
         json["LimitFilter"] = LimitFilter;
         json["ResultLimit"] = ResultLimit;
+        if (CurrentPage > 1) json["CurrentPage"] = CurrentPage;
         json["DisplayCostLimit"] = DisplayCostLimit;
         json["ItemSizeLimit"] = ItemSizeLimit;
         json["CurrentPage"] = CurrentPage;
@@ -699,6 +704,7 @@ namespace TMX {
 
     const string[] SORT_NAMES = {
         "Awards Most", "Awards Least", 
+        "Downloads Most", "Downloads Least",
         "Difficulty Easiest", "Difficulty Hardest",
         "Name A-Z", "Name Z-A",
         "Uploaded Newest", "Uploaded Oldest"

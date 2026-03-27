@@ -108,6 +108,9 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
     if (resp !is null && resp.HasKey("activityList")) {
         Json::Value@ list = resp["activityList"];
         for (uint i = 0; i < list.Length; i++) {
+            if (list[i].GetType() != Json::Type::Object) {
+                continue;
+            }
             Activity@ a = Activity(list[i]);
             
             // Re-use existing activity handle if it has unsaved changes
@@ -246,17 +249,29 @@ void DoToggleActivityFeatured(ref@ r) {
 void LoadActivityDetails(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
-    Json::Value@ resp = API::GetClubActivity(State::SelectedClub.Id, a.Id);
-    if (resp !is null) {
-        a.Description = resp.HasKey("description") ? string(resp["description"]) : "";
+    a.Failed = false;
+    Json::Value@ resp = (a.Type == "news") ? API::GetClubNews(State::SelectedClub.Id, a.Id) : API::GetClubActivity(State::SelectedClub.Id, a.Id);
+    if (resp !is null && resp.GetType() == Json::Type::Object) {
+        Json::Value@ details = resp.HasKey("news") ? resp["news"] : resp;
+        if (a.Type == "news") {
+            a.Headline = JsonGetString(details, "headline", a.Name).Replace("|ClubActivity|", "");
+            a.Body = JsonGetString(details, "body", "").Replace("|ClubActivity|", "");
+        } else {
+            a.Body = JsonGetString(details, "description", "");
+        }
         a.NewsLoaded = true;
+    } else {
+        a.Failed = true;
+        warn("Failed to load activity details for " + a.Id + " (Type: " + a.Type + ")");
     }
+    a.LoadingMaps = false;
 }
 
 void LoadActivityMaps(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     
+    a.Failed = false;
     a.LoadingMaps = true;
     if (a.HasMapChanges) {
         // trace("LoadActivityMaps: " + a.Name + " has unsaved changes, skipping reload.");
@@ -271,7 +286,7 @@ void LoadActivityMaps(ref@ r) {
     if (a.Type == "campaign") {
         Json::Value@ json = API::GetCampaignMaps(clubId, a.CampaignId);
         // trace("GetCampaignMaps(" + a.CampaignId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
-        if (json !is null) {
+        if (json !is null && json.GetType() == Json::Type::Object) {
             a.CampaignId = JsonGetUint(json, "campaignId", a.CampaignId);
             a.Name = Text::StripFormatCodes(JsonGetString(json, "name", a.Name));
             // Check top level, then check inside "campaign" object
@@ -287,11 +302,13 @@ void LoadActivityMaps(ref@ r) {
                     }
                 }
             }
+        } else {
+            a.Failed = true;
         }
     } else if (a.Type == "room") {
         Json::Value@ json = API::GetClubRoom(clubId, a.RoomId);
         // trace("GetClubRoom(" + a.RoomId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
-        if (json !is null) {
+        if (json !is null && json.GetType() == Json::Type::Object) {
             // Check if this room is mirroring a campaign
             uint campaignId = 0;
             if (json.HasKey("campaignId") && json["campaignId"].GetType() == Json::Type::Number) {
@@ -336,6 +353,8 @@ void LoadActivityMaps(ref@ r) {
                     if (uid != "" && !uid.Contains(":error-")) uids.InsertLast(uid);
                 }
             }
+        } else {
+            a.Failed = true;
         }
     }
 
@@ -448,10 +467,10 @@ void DoSaveNews(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     Json::Value@ s = Json::Object();
-    s["name"] = a.Headline;
-    s["description"] = a.Body;
-    API::EditClubActivity(State::SelectedClub.Id, a.Id, s);
-    Notify("News updated.");
+    s["headline"] = "|ClubActivity|" + a.Headline;
+    s["body"] = "|ClubActivity|" + a.Body;
+    API::EditClubNews(State::SelectedClub.Id, a.Id, s);
+    Notify("News content updated.");
 }
 
 void DoUpdateBranding(ref@ r) {

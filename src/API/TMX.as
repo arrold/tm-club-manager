@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CReplayWR.RecordTime%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CDownloadCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CReplayWR.RecordTime%2CAuthorBeaten%2CServerSizeExceeded%2CEmbeddedItemsSize%2CDisplayCost";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
@@ -62,26 +62,17 @@ namespace TMX {
     }
 
     int GetSortEnumValue(int index) {
-        // Stable mapping from REF API.as
         switch (index) {
             case 0:  return 12; // Awards Most
             case 1:  return 11; // Awards Least
             case 2:  return 20; // Downloads Most
-            case 3:  return 10; // Activity Newest
-            case 4:  return 14; // Comments Most
-            case 5:  return 13; // Comments Least
-            case 6:  return 15; // Difficulty Easiest
-            case 7:  return 16; // Difficulty Hardest
-            case 8:  return 17; // Length Shortest
-            case 9:  return 18; // Length Longest
-            case 10: return 1;  // Name A-Z
-            case 11: return 2;  // Name Z-A
-            case 12: return 30; // Online Rating Most
-            case 13: return 29; // Online Rating Least
-            case 14: return 6;  // Uploaded Newest
-            case 15: return 5;  // Uploaded Oldest
-            case 16: return 42; // Awards This Week
-            case 17: return 44; // Awards This Month
+            case 3:  return 19; // Downloads Least
+            case 4:  return 15; // Difficulty Easiest
+            case 5:  return 16; // Difficulty Hardest
+            case 6:  return 1;  // Name A-Z
+            case 7:  return 2;  // Name Z-A
+            case 8:  return 6;  // Uploaded Newest
+            case 9:  return 5;  // Uploaded Oldest
         }
         return -1;
     }

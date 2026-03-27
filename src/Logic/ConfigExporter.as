@@ -21,7 +21,7 @@ namespace ConfigExporter {
                 if (items[i].Type == "folder") {
                     folders.Add(ExportFolder(items[i], items));
                 } else {
-                    rootActivities.Add(ExportActivity(items[i]));
+                    rootActivities.Add(ExportActivity(items[i], items));
                 }
             }
         }
@@ -29,9 +29,15 @@ namespace ConfigExporter {
         if (rootActivities.Length > 0) config["activities"] = rootActivities;
         if (folders.Length > 0) config["folders"] = folders;
 
-        string filename = State::SelectedClub.Name + "_export.json";
-        // Sanitise filename
-        filename = filename.Replace("/", "_").Replace("\\", "_").Replace(":", "_");
+        // Standardise filename: lowercase_with_underscores.json
+        string rawName = State::SelectedClub.Name;
+        string filename = "";
+        for (uint i = 0; i < rawName.Length; i++) {
+            string c = rawName.SubStr(i, 1);
+            if (c == " " || c == "/" || c == "\\" || c == ":" || c == "-") filename += "_";
+            else filename += c.ToLower();
+        }
+        filename += ".json";
         
         Json::ToFile(IO::FromStorageFolder(filename), config);
         UI::ShowNotification("Exporter", "Club structure exported to " + filename, vec4(0, 0.8, 0, 1), 7000);
@@ -40,17 +46,22 @@ namespace ConfigExporter {
     Json::Value@ ExportFolder(Activity@ f, Activity@[]@ all) {
         Json::Value@ json = Json::Object();
         json["name"] = f.Name;
+        json["active"] = f.Active;
         Json::Value@ activities = Json::Array();
         for (uint i = 0; i < all.Length; i++) {
             if (all[i].FolderId == f.Id) {
-                activities.Add(ExportActivity(all[i]));
+                if (all[i].Type == "folder") {
+                    activities.Add(ExportFolder(all[i], all)); // Recursive crawl
+                } else {
+                    activities.Add(ExportActivity(all[i], all));
+                }
             }
         }
         json["activities"] = activities;
         return json;
     }
 
-    Json::Value@ ExportActivity(Activity@ a) {
+    Json::Value@ ExportActivity(Activity@ a, Activity@[]@ all) {
         Json::Value@ json = Json::Object();
         json["name"] = a.Name;
         json["type"] = a.Type;
