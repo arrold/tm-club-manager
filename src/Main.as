@@ -16,6 +16,7 @@ void Main() {
     MetadataOverrides::Load();
     AuditCache::Init();
     Testing::Init();
+    startnew(MetadataOverrides::SyncAllNames);
     
     // Initialize UI Tabs
     CM_UI::tabs.InsertLast(ClubsTab());

@@ -142,11 +142,84 @@ namespace MetadataOverrides {
             }
 
             UI::Separator();
+            if (Denylist::IsExcluded(map.Uid)) {
+                if (UI::MenuItem(Icons::Check + " Remove from Denylist")) {
+                    Denylist::Remove(map.Uid);
+                }
+            } else {
+                if (UI::MenuItem(Icons::Ban + " Add to Denylist")) {
+                    Denylist::Add(map.Uid);
+                }
+            }
+
+            UI::Separator();
             if (UI::MenuItem(Icons::Refresh + " Reset to Default")) {
                 Reset(map.Uid, map);
             }
 
             UI::EndPopup();
+        }
+    }
+    
+    void SyncAllNames() {
+        Load();
+        string[] uids = data.GetKeys();
+        string[] toFetch;
+        for (uint i = 0; i < uids.Length; i++) {
+            if (!data[uids[i]].HasKey("Name") || JsonGetString(data[uids[i]], "Name").Trim() == "") {
+                toFetch.InsertLast(uids[i]);
+            }
+        }
+
+        if (toFetch.Length == 0) {
+            // trace("[Metadata Sync] No names missing for " + uids.Length + " overrides.");
+            return;
+        }
+
+        trace("[Metadata Sync] Waiting for authentication to resolve " + toFetch.Length + " map names...");
+        while (!NadeoServices::IsAuthenticated("NadeoLiveServices")) yield();
+
+        uint updatedCount = 0;
+        // Fetch in batches of 25 (safer URL length for Nadeo API)
+        for (uint i = 0; i < toFetch.Length; i += 25) {
+            string[] batch;
+            for (uint j = i; j < i + 25 && j < toFetch.Length; j++) batch.InsertLast(toFetch[j]);
+            
+            trace("[Metadata Sync] Requesting batch " + (i/25 + 1) + " (" + batch.Length + " maps)...");
+            Json::Value@ results = API::GetMapsInfo(batch);
+            if (results !is null) {
+                Json::Value@ list = results.GetType() == Json::Type::Array ? results : (results.HasKey("mapList") ? results["mapList"] : null);
+                if (list !is null && list.GetType() == Json::Type::Array) {
+                    if (list.Length > 0) {
+                        trace("[Metadata Sync] First item keys: " + string::Join(list[0].GetKeys(), ", "));
+                    }
+                    for (uint k = 0; k < list.Length; k++) {
+                        string uid = JsonGetString(list[k], "mapUid");
+                        if (uid == "") uid = JsonGetString(list[k], "uid"); // Fallback
+                        string name = Text::StripFormatCodes(JsonGetString(list[k], "name"));
+                        if (name == "") name = Text::StripFormatCodes(JsonGetString(list[k], "mapName")); // Fallback
+                        if (uid != "" && name != "") {
+                            if (data.HasKey(uid)) {
+                                data[uid]["Name"] = name;
+                                updatedCount++;
+                            }
+                        }
+                    }
+                } else {
+                    warn("[Metadata Sync] Error: API returned unexpected structure: " + Json::Write(results));
+                }
+            } else {
+                warn("[Metadata Sync] API::GetMapsInfo returned null for batch starting at " + i);
+            }
+            yield();
+        }
+        
+        if (updatedCount > 0) {
+            Save();
+            Notify("Metadata Sync complete. " + updatedCount + " names updated.");
+            trace("[Metadata Sync] Successfully updated " + updatedCount + " map names.");
+        } else {
+            trace("[Metadata Sync] Finished. No names were updated (API mismatch or all valid).");
         }
     }
 }

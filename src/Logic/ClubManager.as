@@ -506,13 +506,16 @@ void DoAuditSubscription(ref@ r) {
     
     TmxMap@[] results;
     if (sub.SourceType == 1) { // Local List
-        results = CustomLists::GetMaps(sub.ListId);
-        if (results.Length > sub.MapLimit) {
-            TmxMap@[] sliced;
-            for (uint i = 0; i < sub.MapLimit; i++) sliced.InsertLast(results[i]);
-            results = sliced;
+        TmxMap@[] allMaps = CustomLists::GetMaps(sub.ListId);
+        // Apply Denylist for local lists too
+        TmxMap@[] filtered;
+        for (uint i = 0; i < allMaps.Length; i++) {
+            if (!Denylist::IsExcluded(allMaps[i].Uid)) filtered.InsertLast(allMaps[i]);
+            if (filtered.Length >= sub.MapLimit) break;
         }
+        results = filtered;
     } else { // TMX Search
+        // Denylist is handled inside FetchMapsSequential -> FilterTmxResults
         results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
     }
 

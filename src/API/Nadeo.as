@@ -192,7 +192,12 @@ namespace API {
                 Json::Value@ c = Json::Object();
                 c["name"] = cats[i]["name"];
                 c["position"] = cats[i]["position"];
-                c["length"] = (cats.Length == 1) ? int(mapUids.Length) : int(cats[i]["length"]);
+                // Always sync length for the first/only category to match the new playlist
+                if (i == 0 && cats.Length == 1) {
+                    c["length"] = int(mapUids.Length);
+                } else {
+                    c["length"] = int(cats[i]["length"]);
+                }
                 newCats.Add(c);
             }
             data["categories"] = newCats;
@@ -207,7 +212,8 @@ namespace API {
             data["categories"] = newCats;
         }
 
-        // trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps. UIDs: " + string::Join(mapUids, ", "));
+        trace("SetCampaignMaps: Updating campaign " + campaignId + " (" + campaignName + ") with " + mapUids.Length + " maps.");
+        // trace("Payload: " + Json::Write(data));
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
     }
 

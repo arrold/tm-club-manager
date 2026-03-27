@@ -135,6 +135,9 @@ class ClubsTab : Tab {
                 UI::Text("\\$8f8" + Icons::Check + " Audit Complete: All subscriptions are up to date.");
                 if (UI::Button(Icons::Refresh + " Re-Audit All")) startnew(DoBulkAudit);
             }
+        } else {
+            // Initial state: No audit in progress or complete for this club session
+            if (UI::Button(Icons::Search + " Audit All Subscriptions")) startnew(DoBulkAudit);
         }
 
         if (ConfigImporter::log.Length > 0) {

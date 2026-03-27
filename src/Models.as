@@ -190,6 +190,7 @@ class TmxMap {
     uint EmbeddedItemsSize;
     uint DisplayCost;
     string[] Tags;
+    string[] Authors;
     bool HasScreenshot;
 
     TmxMap() {}
@@ -215,6 +216,21 @@ class TmxMap {
             Author = "Unknown Author";
         }
         
+        // Always include primary uploader in Authors list
+        Authors.InsertLast(Author);
+
+        if (json.HasKey("Authors") && json["Authors"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["Authors"].Length; i++) {
+                Json::Value@ a = json["Authors"][i];
+                if (a.GetType() == Json::Type::Object) {
+                    string aName = "";
+                    if (a.HasKey("Username")) aName = Text::StripFormatCodes(string(a["Username"]));
+                    else if (a.HasKey("Name")) aName = Text::StripFormatCodes(string(a["Name"]));
+                    
+                    if (aName != "" && Authors.Find(aName) < 0) Authors.InsertLast(aName);
+                }
+            }
+        }
 
         if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object && json["Medals"].HasKey("Author")) {
             LengthSecs = uint(json["Medals"]["Author"]) / 1000;

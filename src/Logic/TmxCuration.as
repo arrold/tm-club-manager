@@ -181,15 +181,27 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
         if (i % 10 == 0) yield(); // Yield to prevent UI hang during large JSON processing
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
+        if (Denylist::IsExcluded(m.Uid)) continue;
 
-        // Author filter
+        // Author filter (handles collaborations and tags)
         if (f.AuthorNames.Length > 0) {
             bool authorMatch = false;
             for (uint j = 0; j < f.AuthorNames.Length; j++) {
-                if (m.Author.ToLower().Contains(f.AuthorNames[j].ToLower())) {
-                    authorMatch = true;
-                    break;
+                string searchName = f.AuthorNames[j].ToLower();
+                // Check primary uploader + collaborators
+                for (uint k = 0; k < m.Authors.Length; k++) {
+                    if (m.Authors[k].ToLower().Contains(searchName)) {
+                        authorMatch = true; break;
+                    }
                 }
+                if (authorMatch) break;
+                // Check tags (sometimes authors are tagged)
+                for (uint k = 0; k < m.Tags.Length; k++) {
+                    if (m.Tags[k].ToLower().Contains(searchName)) {
+                        authorMatch = true; break;
+                    }
+                }
+                if (authorMatch) break;
             }
             if (!authorMatch) continue;
         }

@@ -1,13 +1,13 @@
 // Club Manager - Testing.as
 // Developer-only verification framework.
-// Run from the Openplanet console: Testing::RunAll()
+//
+// HOW TO USE:
+// 1. Open the Openplanet console (tilde or F3 by default).
+// 2. To run regression tests: Type "Testing::RunAll()" and press Enter.
 
 namespace Testing {
-    [Setting hidden]
-    bool CommandRegistered = false;
-
     void Init() {
-        // RunAll() can be called from console: Testing::RunAll()
+        // Reserved for future setup
     }
 
     void RunAll() {
@@ -24,6 +24,8 @@ namespace Testing {
             warn("--- [TM Club Manager] SOME TESTS FAILED ---");
         }
     }
+
+    // Syncing of Metadata Names is now automated at startup in Main.as
 
     bool Test_TmxSearchFilters_Serialization() {
         TmxSearchFilters f;

@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
