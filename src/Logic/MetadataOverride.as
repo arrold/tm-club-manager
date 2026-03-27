@@ -56,9 +56,16 @@ namespace MetadataOverrides {
         if (!data.HasKey(uid)) data[uid] = Json::Object();
         data[uid]["Difficulty"] = difficulty;
         // Also sync DifficultyName for consistency
-        if (difficulty > 0 && difficulty <= int(TMX::DIFFICULTY_NAMES.Length)) {
+        if (difficulty > 0 && difficulty <= int(TMX::SORT_NAMES.Length)) {
             data[uid]["DifficultyName"] = TMX::DIFFICULTY_NAMES[difficulty - 1];
         }
+        Save();
+    }
+
+    void SetName(const string &in uid, const string &in name) {
+        Load();
+        if (!data.HasKey(uid)) data[uid] = Json::Object();
+        data[uid]["Name"] = name;
         Save();
     }
 
@@ -77,6 +84,9 @@ namespace MetadataOverrides {
         if (!data.HasKey(map.Uid)) return;
 
         Json::Value@ override = data[map.Uid];
+        if (override.HasKey("Name")) {
+            map.Name = string(override["Name"]);
+        }
         if (override.HasKey("Difficulty")) {
             map.Difficulty = int(override["Difficulty"]);
         }
@@ -101,6 +111,7 @@ namespace MetadataOverrides {
                     bool selected = map.Difficulty == int(d + 1);
                     if (UI::MenuItem(TMX::DIFFICULTY_NAMES[d], "", selected)) {
                         SetDifficulty(map.Uid, d + 1);
+                        SetName(map.Uid, map.Name); // Ensure name is stored when editing Difficulty
                         map.Difficulty = d + 1;
                         map.DifficultyName = TMX::DIFFICULTY_NAMES[d];
                     }
@@ -123,6 +134,7 @@ namespace MetadataOverrides {
                             }
                         }
                         SetTags(map.Uid, newTags);
+                        SetName(map.Uid, map.Name); // Ensure name is stored when editing Tags
                         map.Tags = newTags;
                     }
                 }

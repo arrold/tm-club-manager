@@ -16,13 +16,11 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
     uint totalNeeded = skipCount + limit;
     
-    // Optimization: if no client-side only filters are active, we can jump straight to the offset
-    bool hasClientFilters = f.MapName != "" || f.AuthorNames.Length > 0 || f.TimeFromMs > 0 || f.TimeToMs > 0;
-    uint offset = hasClientFilters ? 0 : skipCount;
+    uint offset = 0; // Always start from zero to ensure robust cursor-based scanning
     uint lastId = 0;
     
-    uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50)); // Smaller batches for stability
-    uint targetLength = hasClientFilters ? totalNeeded : limit;
+    uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50));
+    uint targetLength = totalNeeded;
     while (allResults.Length < targetLength) {
         Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache);
         if (json is null) break; // Timeout or Error handled in TMX.as warning
@@ -53,7 +51,7 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     
     // Slice only the requested
     TmxMap@[] pageResults;
-    uint startIdx = hasClientFilters ? skipCount : 0;
+    uint startIdx = skipCount;
     if (allResults.Length > startIdx) {
         for (uint i = startIdx; i < allResults.Length; i++) {
             pageResults.InsertLast(allResults[i]);
@@ -99,7 +97,7 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
     }
 
     // Client-side Sort
-    SortMaps(merged, f.SortPrimary);
+    SortMaps(merged, f.SortPrimary, f.SortSecondary);
     yield();
 
     // Slice
@@ -118,31 +116,44 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
     return pageResults;
 }
 
-void SortMaps(TmxMap@[]& arr, int sortIdx) {
+void SortMaps(TmxMap@[]& arr, int sort1, int sort2 = -1) {
     if (arr.Length < 2) return;
-    if (sortIdx < 0 || sortIdx > 9) return; 
+    if (sort1 < 0 || sort1 > 9) return; 
     uint compareCount = 0;
     for (uint i = 0; i < arr.Length; i++) {
         for (uint j = i + 1; j < arr.Length; j++) {
-            if (++compareCount % 100 == 0) yield(); // Yield every 100 comparisons for responsiveness
-            bool swap = false;
-            switch (sortIdx) {
-                case 0: swap = arr[i].AwardCount < arr[j].AwardCount; break; // Awards Most
-                case 1: swap = arr[i].AwardCount > arr[j].AwardCount; break; // Awards Least
-                case 2: swap = arr[i].DownloadCount < arr[j].DownloadCount; break; // Downloads Most
-                case 3: swap = arr[i].DownloadCount > arr[j].DownloadCount; break; // Downloads Least
-                case 4: swap = arr[i].Difficulty > arr[j].Difficulty; break; // Easiest
-                case 5: swap = arr[i].Difficulty < arr[j].Difficulty; break; // Hardest
-                case 6: swap = arr[i].Name > arr[j].Name; break; // A-Z
-                case 7: swap = arr[i].Name < arr[j].Name; break; // Z-A
-                case 8: swap = arr[i].UploadedAt < arr[j].UploadedAt; break; // Newest
-                case 9: swap = arr[i].UploadedAt > arr[j].UploadedAt; break; // Oldest
-            }
-            if (swap) {
+            if (++compareCount % 100 == 0) yield(); 
+            if (CompareMaps(arr[i], arr[j], sort1, sort2)) {
                 TmxMap@ temp = arr[i]; @arr[i] = arr[j]; @arr[j] = temp;
             }
         }
     }
+}
+
+bool CompareMaps(TmxMap@ a, TmxMap@ b, int s1, int s2) {
+    bool swap = ShouldSwap(a, b, s1);
+    bool equal = !swap && !ShouldSwap(b, a, s1);
+    
+    if (equal && s2 >= 0 && s2 <= 9) {
+        return ShouldSwap(a, b, s2);
+    }
+    return swap;
+}
+
+bool ShouldSwap(TmxMap@ a, TmxMap@ b, int sortIdx) {
+    switch (sortIdx) {
+        case 0: return a.AwardCount < b.AwardCount; // Awards Most
+        case 1: return a.AwardCount > b.AwardCount; // Awards Least
+        case 2: return a.DownloadCount < b.DownloadCount; // Downloads Most
+        case 3: return a.DownloadCount > b.DownloadCount; // Downloads Least
+        case 4: return a.Difficulty > b.Difficulty; // Easiest
+        case 5: return a.Difficulty < b.Difficulty; // Hardest
+        case 6: return a.Name > b.Name; // A-Z
+        case 7: return a.Name < b.Name; // Z-A
+        case 8: return a.UploadedAt < b.UploadedAt; // Newest
+        case 9: return a.UploadedAt > b.UploadedAt; // Oldest
+    }
+    return false;
 }
 
 /*

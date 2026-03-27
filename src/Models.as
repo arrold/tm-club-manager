@@ -282,7 +282,8 @@ class TmxMap {
         } else {
             SizeWarning = ""; // GREEN (Safe)
         }
-        MetadataOverrides::Intercept(this);
+        
+        MetadataOverrides::Intercept(@this);
     }
 
     string get_PrimarySurface() {
@@ -426,15 +427,34 @@ class TmxSearchFilters {
             UploadedTo = JsonGetString(json, "UploadedTo");
         }
 
-        SortPrimary = JsonGetInt(json, "SortPrimary", -1);
-        if (SortPrimary == -1 && json.HasKey("PrimarySort")) {
+        SortPrimary = -1;
+        if (json.HasKey("SortPrimary")) {
+            if (json["SortPrimary"].GetType() == Json::Type::Number) {
+                SortPrimary = int(json["SortPrimary"]);
+            } else if (json["SortPrimary"].GetType() == Json::Type::String) {
+                string sp = string(json["SortPrimary"]);
+                for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                    if (TMX::SORT_NAMES[i] == sp) { SortPrimary = i; break; }
+                }
+            }
+        } else if (json.HasKey("PrimarySort")) {
             string ps = JsonGetString(json, "PrimarySort");
             for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
                 if (TMX::SORT_NAMES[i] == ps) { SortPrimary = i; break; }
             }
         }
-        SortSecondary = JsonGetInt(json, "SortSecondary", -1);
-        if (SortSecondary == -1 && json.HasKey("SecondarySort")) {
+
+        SortSecondary = -1;
+        if (json.HasKey("SortSecondary")) {
+            if (json["SortSecondary"].GetType() == Json::Type::Number) {
+                SortSecondary = int(json["SortSecondary"]);
+            } else if (json["SortSecondary"].GetType() == Json::Type::String) {
+                string ss = string(json["SortSecondary"]);
+                for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                    if (TMX::SORT_NAMES[i] == ss) { SortSecondary = i; break; }
+                }
+            }
+        } else if (json.HasKey("SecondarySort")) {
             string ss = JsonGetString(json, "SecondarySort");
             for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
                 if (TMX::SORT_NAMES[i] == ss) { SortSecondary = i; break; }
@@ -592,8 +612,19 @@ class TmxSearchFilters {
         json["TimeToMs"] = TimeToMs;
         json["UploadedFrom"] = UploadedFrom;
         json["UploadedTo"] = UploadedTo;
-        json["SortPrimary"] = SortPrimary;
-        json["SortSecondary"] = SortSecondary;
+        
+        if (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) {
+            json["SortPrimary"] = TMX::SORT_NAMES[SortPrimary];
+        } else {
+            json["SortPrimary"] = -1;
+        }
+
+        if (SortSecondary >= 0 && uint(SortSecondary) < TMX::SORT_NAMES.Length) {
+            json["SortSecondary"] = TMX::SORT_NAMES[SortSecondary];
+        } else {
+            json["SortSecondary"] = -1;
+        }
+
         json["InTOTD"] = InTOTD;
         json["InCollection"] = InCollection;
         json["InOnlineRecords"] = InOnlineRecords;
@@ -605,7 +636,6 @@ class TmxSearchFilters {
         if (CurrentPage > 1) json["CurrentPage"] = CurrentPage;
         json["DisplayCostLimit"] = DisplayCostLimit;
         json["ItemSizeLimit"] = ItemSizeLimit;
-        json["CurrentPage"] = CurrentPage;
         
         Json::Value@ inc = Json::Array();
         for (uint i = 0; i < IncludeTags.Length; i++) inc.Add(IncludeTags[i]);

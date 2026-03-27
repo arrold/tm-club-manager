@@ -9,7 +9,13 @@ namespace AuditCache {
         if (MetadataOverrides::data is null) return;
         string[]@ keys = MetadataOverrides::data.GetKeys();
         for (uint i = 0; i < keys.Length; i++) {
-            TriggerEagerLoad(keys[i]);
+            string uid = keys[i];
+            Json::Value@ ovr = MetadataOverrides::data[uid];
+            if (ovr.HasKey("Name")) {
+                cache[uid] = string(ovr["Name"]);
+            } else {
+                TriggerEagerLoad(uid);
+            }
         }
     }
 
