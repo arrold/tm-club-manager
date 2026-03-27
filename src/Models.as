@@ -49,7 +49,7 @@ class Club {
     bool Public;
     Club() {}
     Club(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         
         if (json.HasKey("id")) Id = uint(json["id"]);
         else if (json.HasKey("clubId")) Id = uint(json["clubId"]);
@@ -72,7 +72,7 @@ class MapInfo {
 
     MapInfo() {}
     MapInfo(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
         else if (json.HasKey("uid")) Uid = string(json["uid"]);
         else if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
@@ -135,7 +135,7 @@ class Activity {
 
     Activity() {}
     Activity(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         
         if (json.HasKey("id")) Id = uint(json["id"]);
         else if (json.HasKey("activityId")) Id = uint(json["activityId"]);
@@ -195,7 +195,7 @@ class TmxMap {
     TmxMap() {}
 
     TmxMap(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         TrackId = json.HasKey("MapId") ? int(json["MapId"]) : (json.HasKey("TrackId") ? int(json["TrackId"]) : 0);
         
         if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);

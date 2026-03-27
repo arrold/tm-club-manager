@@ -15,6 +15,7 @@ void Main() {
     CustomLists::Load();
     MetadataOverrides::Load();
     AuditCache::Init();
+    Testing::Init();
     
     // Initialize UI Tabs
     CM_UI::tabs.InsertLast(ClubsTab());

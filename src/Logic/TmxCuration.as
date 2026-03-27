@@ -168,9 +168,10 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
 
     if (json is null) return filtered;
     
-    Json::Value@ results = json;
+    Json::Value@ results;
+    @results = @json;
     if (json.GetType() == Json::Type::Object && json.HasKey("Results") && json["Results"].GetType() == Json::Type::Array) {
-        @results = json["Results"];
+        @results = @json["Results"];
     }
 
     if (results.GetType() != Json::Type::Array) return filtered;
