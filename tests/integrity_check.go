@@ -35,7 +35,71 @@ func main() {
 		errors++
 	}
 
-	// 4. Handle-Based Memory Management (Regression Prevention)
+	// 4. TMX Search Filters & UI Elements (Pinning critical features)
+	
+	// Map Name & Author
+	if !checkFileContains("src/Models.as", "string MapName = \"\";") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing MapName field")
+		errors++
+	}
+	if !checkFileContains("src/Models.as", "string[] AuthorNames = {};") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing AuthorNames field")
+		errors++
+	}
+
+	// Difficulties (6)
+	if !checkFileContains("src/Models.as", "bool[] Difficulties = { false, false, false, false, false, false };") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing or malformed Difficulties array (expects 6)")
+		errors++
+	}
+
+	// Sorting Options (10)
+	if !checkFileContains("src/API/TMX.as", "case 9:  return 2;  // Name Z-A") {
+		fmt.Println("[FAIL] TMX API: Missing 10th sorting option (Name Z-A)")
+		errors++
+	}
+
+	// Primary Tag & Surface
+	if !checkFileContains("src/Models.as", "bool PrimaryTagOnly = false;") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing PrimaryTagOnly toggle")
+		errors++
+	}
+	if !checkFileContains("src/Models.as", "bool PrimarySurfaceOnly = false;") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing PrimarySurfaceOnly toggle")
+		errors++
+	}
+
+	// Room Guardrails
+	if !checkFileContains("src/Models.as", "uint DisplayCostLimit = 10000;") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing Room Guardrails (DisplayCostLimit)")
+		errors++
+	}
+
+	// Upload Date Range & Author Time Range
+	if !checkFileContains("src/Models.as", "string UploadedFrom = \"\";") || !checkFileContains("src/Models.as", "string UploadedTo = \"\";") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing UploadDateRange fields")
+		errors++
+	}
+	if !checkFileContains("src/Models.as", "uint TimeFromMs = 0;") || !checkFileContains("src/Models.as", "uint TimeToMs = 0;") {
+		fmt.Println("[FAIL] TmxSearchFilters: Missing AuthorTimeRange fields")
+		errors++
+	}
+
+	// UI Strings in CurationTab
+	if !checkFileContains("src/Tabs/CurationTab.as", `Icons::Tag + " Primary Tag"`) {
+		fmt.Println("[FAIL] src/Tabs/CurationTab.as: Missing 'Primary Tag' UI button")
+		errors++
+	}
+	if !checkFileContains("src/Tabs/CurationTab.as", `Icons::Leaf + " Primary Surface"`) {
+		fmt.Println("[FAIL] src/Tabs/CurationTab.as: Missing 'Primary Surface' UI button")
+		errors++
+	}
+	if !checkFileContains("src/Tabs/CurationTab.as", `Icons::ExclamationTriangle + " Room Guardrails: "`) {
+		fmt.Println("[FAIL] src/Tabs/CurationTab.as: Missing 'Room Guardrails' UI label")
+		errors++
+	}
+
+	// 5. Handle-Based Memory Management (Regression Prevention)
 	// Ensuring common collections use @Handles
 	if !checkFileContains("src/Models.as", "TmxMap@[]") && !checkFileContains("src/Logic/TmxCuration.as", "TmxMap@[]") {
 		fmt.Println("[FAIL] Handle regression: TmxMap collections should use @[] handles.")
