@@ -11,21 +11,26 @@ Club Manager is a tool designed to help you organize and manage your Trackmania 
 
 ### Map Curation & TMX Integration
 - **Advanced Search**: Find maps on [Trackmania Exchange (TMX)](https://trackmania.exchange) using filters for name, author, awards, time range, and tags.
+- **Collaborator Search**: Full support for finding maps where a mapper is an author but not the uploader.
 - **Automatic Audits**: Keep your club campaigns and rooms synced with any TMX search. See exactly what has changed and sync everything with a single click.
+- **Intelligent Category Sync**: Automatically stabilizes campaign categories during updates to prevent Nadeo API InternalServerErrors.
+- **Metadata Overrides**: Customise difficulty, tags, and map names locally without affecting the TMX source.
 - **Guardrails**: Flags maps that might exceed game limits (large file sizes or high display costs) before you add them.
+- **Subscription System**: Efficient configuration storage (saving only modified filters) to keep your club data lean.
 
 ### Local Map Browser
 - **Direct Access**: Browse and add maps directly from your local `Documents/Trackmania/Maps/` folder without leaving the game.
 
-## Requirements
-- **Club Access**: You must have an active Trackmania Club Access subscription to manage club activities.
+## Developer Verification (Local)
 
-## Installation
+To ensure code integrity and prevent regressions (such as broken TMX protocols or UI elements), use the Go-based verification tool:
 
-1. Download the latest `ClubManager.op` from the [GitHub Releases](https://github.com/Arrold/tm-club-manager/releases) page.
-2. Place the `.op` file into your Openplanet Plugins folder:
-   - Default path: `C:\Users\<YourUser>\OpenplanetNext\Plugins\`
-3. Restart the game or refresh your plugins via the F3 menu.
+1. Ensure [Go](https://go.dev/) is installed.
+2. Run the verification script:
+   ```pwsh
+   go run scripts/verify.go
+   ```
+3. The script will verify TMX author flags, syntax consistency, and UI manifest presence.
 
 ---
 *Developed by Arrold*

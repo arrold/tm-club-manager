@@ -317,11 +317,12 @@ class CurationTab : Tab {
             }
         }
 
-        if (UI::BeginTable("SearchResultTable", 10, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
+        if (UI::BeginTable("SearchResultTable", 11, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
             UI::TableSetupColumn("Select", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("ID", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthStretch);
-            UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Uploader", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Authors", UI::TableColumnFlags::WidthFixed, 30);
             UI::TableSetupColumn("Awards", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Warn", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("Length", UI::TableColumnFlags::WidthFixed, 80);
@@ -342,6 +343,16 @@ class CurationTab : Tab {
                 MetadataOverrides::RenderOverrideMenu(m);
                 UI::TableNextColumn();
                 UI::Text(m.Author);
+                UI::TableNextColumn();
+                UI::Text(Icons::Users);
+                if (UI::IsItemHovered()) {
+                    UI::BeginTooltip();
+                    UI::Text("Collaborators:");
+                    for (uint j = 0; j < m.Authors.Length; j++) {
+                        UI::Text("- " + m.Authors[j]);
+                    }
+                    UI::EndTooltip();
+                }
                 UI::TableNextColumn();
                 UI::Text(tostring(m.AwardCount));
                 UI::TableNextColumn();

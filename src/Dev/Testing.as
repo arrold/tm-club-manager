@@ -46,6 +46,12 @@ namespace Testing {
             return false;
         }
 
+        // Verify Efficiency: A default field (like Vehicle) should NOT be in the JSON
+        if (json.HasKey("Vehicle")) {
+            warn("[Test] Failed: Efficiency check - 'Vehicle' should not be present in JSON if default.");
+            return false;
+        }
+
         // Round trip
         TmxSearchFilters f2(json);
         if (f2.SortPrimary != 0 || f2.SortSecondary != 8 || f2.InTOTD != 1) {
@@ -53,7 +59,7 @@ namespace Testing {
             return false;
         }
         
-        print("[Test] TmxSearchFilters Serialization: OK");
+        print("[Test] TmxSearchFilters Serialization (Efficient): OK");
         return true;
     }
 

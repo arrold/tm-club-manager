@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%5B%5D%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
@@ -23,42 +23,40 @@ namespace TMX {
 
     Json::Value@ TmxRequest(const string &in url, bool useCache = true) {
         if (useCache && searchCache.Exists(url)) {
-            // trace("[TMX] Serving from cache: " + url);
             return cast<Json::Value>(searchCache[url]);
         }
-
         Throttle();
-
         Net::HttpRequest@ req = Net::HttpRequest();
         req.Url = url;
-        // User-Agent is strictly mandatory for TMX to avoid 403s
-        req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold / client_version=" + Meta::ExecutingPlugin().Version;
+        req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold";
         req.Headers["Accept"] = "application/json";
         trace("[TMX] Requesting: " + url);
-
         req.Method = Net::HttpMethod::Get;
         req.Start();
         uint64 start = Time::Now;
         while (!req.Finished()) {
-            if (Time::Now > start + 10000) { // 10s Timeout
-                req.Cancel();
-                warn("TMX API Timeout (10s): " + url);
-                return null;
+            if (Time::Now > start + 10000) { 
+                req.Cancel(); 
+                warn("[TMX] Request Timeout (10s): " + url);
+                return null; 
             }
             yield();
         }
         if (req.ResponseCode() >= 400) {
-            warn("TMX API Error [" + req.ResponseCode() + "]:  (URL: " + url + ")");
+            warn("TMX Error [" + req.ResponseCode() + "]. Body: " + req.String().SubStr(0, 100));
             return null;
         }
 
+        string body = req.String();
+        // trace("[TMX] Response length: " + body.Length);
         Json::Value@ json = req.Json();
-        if (useCache && json !is null) {
-            @searchCache[url] = json;
+        if (json is null) {
+            warn("TMX API Error: Failed to parse JSON. Body Start: " + body.SubStr(0, 100));
+            return null;
         }
+        if (useCache) { @searchCache[url] = json; }
         return json;
     }
-
     Json::Value@ TmxSearch(const string &in params, bool useCache = true) {
         return TmxRequest("https://trackmania.exchange/api/maps?" + params, useCache);
     }
@@ -74,14 +72,14 @@ namespace TMX {
         switch (index) {
             case 0:  return 12; // Awards Most
             case 1:  return 11; // Awards Least
-            case 2:  return 20; // Downloads Most
-            case 3:  return 19; // Downloads Least
-            case 4:  return 15; // Difficulty Easiest
-            case 5:  return 16; // Difficulty Hardest
-            case 6:  return 1;  // Name A-Z
-            case 7:  return 2;  // Name Z-A
-            case 8:  return 6;  // Uploaded Newest
-            case 9:  return 5;  // Uploaded Oldest
+            case 2:  return 5;  // Uploaded Oldest
+            case 3:  return 20; // Downloads Most
+            case 4:  return 19; // Downloads Least
+            case 5:  return 6;  // Uploaded Newest
+            case 6:  return 15; // Difficulty Easiest
+            case 7:  return 16; // Difficulty Hardest
+            case 8:  return 1;  // Name A-Z
+            case 9:  return 2;  // Name Z-A
         }
         return -1;
     }
@@ -101,15 +99,23 @@ namespace TMX {
  * - ExcludeTags: maps that MUST NOT have these tags.
  * Also implements guardrails for "Awards Most" sorting to prevent 500 errors on the TMX side.
  */
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "") {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "", int authorId = -1) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
         // Priority filters first for TMX V1 stability
         if (f.InTOTD == 1) params += "&intotd=1";
         else if (f.InTOTD == 0) params += "&intotd=0";
 
-        string author = authorOverride != "" ? authorOverride : (f.AuthorNames.Length > 0 ? f.AuthorNames[0] : "");
-        if (author != "") params += "&author=" + Net::UrlEncode(author);
+        if (authorId > 0) {
+            params += "&authoruserid=" + tostring(authorId);
+            // Universal Search: anyauthor=1 ensures collaborators are included
+            params += "&anyauthor=1";
+        } else if (authorOverride != "" || f.AuthorNames.Length > 0) {
+            string author = authorOverride != "" ? authorOverride : f.AuthorNames[0];
+            params += "&author=" + Net::UrlEncode(author);
+            params += "&anyauthor=1";
+        }
+        
         if (f.MapName != "") params += "&name=" + Net::UrlEncode(f.MapName);
         
         if (afterId > 0) params += "&after=" + tostring(afterId);
@@ -167,14 +173,36 @@ namespace TMX {
         Json::Value@ json = TmxSearch(params, useCache);
         if (json is null) {
             warn("[TMX] Search returned null.");
-        } else if (json.GetType() != Json::Type::Array) {
-            if (!(json.GetType() == Json::Type::Object && json.HasKey("Results"))) {
-                warn("[TMX] Search returned unexpected object type: " + json.GetType());
-            } else {
-                // trace("[TMX] Found " + json["Results"].Length + " maps.");
-            }
         } else {
-            // trace("[TMX] Found " + json.Length + " maps.");
+            uint count = 0;
+            if (json.GetType() == Json::Type::Array) count = json.Length;
+            else if (json.GetType() == Json::Type::Object && json.HasKey("Results")) count = json["Results"].Length;
+            trace("[TMX] Search completed. Found " + count + " entries.");
+            
+            if (count > 0) {
+                Json::Value@ first;
+                if (json.GetType() == Json::Type::Array) @first = json[0];
+                else if (json.GetType() == Json::Type::Object && json.HasKey("Results")) @first = json["Results"][0];
+                
+                if (first !is null && first.GetType() == Json::Type::Object) {
+                    string name = first.HasKey("Name") ? string(first["Name"]) : "Unknown";
+                    string uploader = (first.HasKey("Uploader") && first["Uploader"].HasKey("Name")) ? string(first["Uploader"]["Name"]) : "Unknown";
+                    string authorList = "";
+                    if (first.HasKey("Authors") && first["Authors"].GetType() == Json::Type::Array) {
+                        for (uint j = 0; j < first["Authors"].Length && j < 5; j++) {
+                            Json::Value@ a = first["Authors"][j];
+                            if (a.GetType() == Json::Type::Object) {
+                                if (a.HasKey("User") && a["User"].HasKey("Name")) {
+                                    authorList += string(a["User"]["Name"]) + ", ";
+                                } else if (a.HasKey("Name")) {
+                                    authorList += string(a["Name"]) + ", ";
+                                }
+                            }
+                        }
+                    }
+                    trace("[TMX] Sample: " + name + " | Uploader: " + uploader + " | Authors: " + authorList);
+                }
+            }
         }
         return json;
     }
@@ -221,5 +249,39 @@ namespace TMX {
     void DoAddFavorite(int64 trackId) {
         // Redirected to Local Lists
         Notify("TMX Auth disabled. Use Local Lists instead.");
+    }
+
+    /* User Resolution */
+    int GetUserId(const string &in username) {
+        if (username == "") return -1;
+        string url = "https://trackmania.exchange/api/user/search?query=" + Net::UrlEncode(username);
+        trace("[TMX] Resolving user via: " + url);
+        Json::Value@ json = TmxRequest(url, true);
+        if (json is null) return -1;
+
+        Json::Value@ results = null;
+        if (json.GetType() == Json::Type::Array) {
+            @results = json;
+        } else if (json.GetType() == Json::Type::Object && json.HasKey("results")) {
+            @results = json["results"];
+        }
+
+        if (results is null || results.GetType() != Json::Type::Array || results.Length == 0) {
+            warn("[TMX] Failed to resolve UserId for: " + username);
+            return -1;
+        }
+        
+        Json::Value@ first = results[0];
+        int id = -1;
+        if (first.HasKey("id")) id = int(first["id"]);
+        else if (first.HasKey("UserID")) id = int(first["UserID"]);
+
+        if (id <= 0) {
+            warn("[TMX] Resolved user but missing UserId field.");
+            return -1;
+        }
+
+        trace("[TMX] Resolved username '" + username + "' to UserId: " + id);
+        return id;
     }
 }
