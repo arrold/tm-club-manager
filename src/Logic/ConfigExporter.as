@@ -47,6 +47,9 @@ namespace ConfigExporter {
         Json::Value@ json = Json::Object();
         json["name"] = f.Name;
         json["active"] = f.Active;
+        json["featured"] = f.Featured;
+        json["public"] = f.Public;
+        if (f.Description != "") json["description"] = f.Description;
         Json::Value@ activities = Json::Array();
         for (uint i = 0; i < all.Length; i++) {
             if (all[i].FolderId == f.Id) {
@@ -66,8 +69,30 @@ namespace ConfigExporter {
         json["name"] = a.Name;
         json["type"] = a.Type;
         json["active"] = a.Active;
+        json["featured"] = a.Featured;
+        json["public"] = a.Public;
+        if (a.Description != "") json["description"] = a.Description;
+        
+        if (a.Type == "news") {
+            json["headline"] = a.Headline;
+            json["body"] = a.Body;
+        }
+
         if (a.Type == "room" && a.MirrorCampaignId > 0) {
-            json["mirrorCampaignId"] = a.MirrorCampaignId;
+            // Find the campaign name by ID in the list of all activities
+            string mirrorName = "";
+            for (uint i = 0; i < all.Length; i++) {
+                if (all[i].Id == a.MirrorCampaignId) {
+                    mirrorName = all[i].Name;
+                    break;
+                }
+            }
+            if (mirrorName != "") {
+                json["mirrorCampaignName"] = mirrorName;
+            } else {
+                // Fallback to ID if not found in current list (unlikely within club)
+                json["mirrorCampaignId"] = a.MirrorCampaignId;
+            }
         }
 
         Subscription@ sub = Subscriptions::GetByActivity(a.Id);

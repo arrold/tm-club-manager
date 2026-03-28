@@ -145,14 +145,27 @@ class ClubsTab : Tab {
             UI::Text("\\$f80" + Icons::Book + " Importer Log " + (ConfigImporter::isImporting ? Icons::Spinner : ""));
             if (UI::BeginChild("ImporterLog", vec2(0, 150), true)) {
                 for (uint i = 0; i < ConfigImporter::log.Length; i++) {
-                    UI::TextDisabled(ConfigImporter::log[i]);
+                    auto entry = ConfigImporter::log[i];
+                    string color = "";
+                    if (entry.Type == ConfigImporter::LogType::Error) color = "\\$f44";
+                    else if (entry.Type == ConfigImporter::LogType::Warning) color = "\\$f80";
+                    
+                    if (color != "") UI::Text(color + entry.Msg);
+                    else UI::TextDisabled(entry.Msg);
                 }
                 if (ConfigImporter::isImporting) UI::SetScrollHereY(1.0f);
             }
             UI::EndChild();
             if (ConfigImporter::dryRun && !ConfigImporter::isImporting) {
+                bool hasErrors = ConfigImporter::currentDelta !is null && ConfigImporter::currentDelta.Errors > 0;
+                UI::BeginDisabled(hasErrors);
                 if (UI::Button(Icons::Check + " Commit Import")) {
                      startnew(CommitImportFlow);
+                }
+                UI::EndDisabled();
+                if (hasErrors) {
+                    UI::SameLine();
+                    UI::Text("\\$f44" + Icons::ExclamationTriangle + " Resolve Errors to Commit");
                 }
             }
             if (UI::Button("Clear Log")) ConfigImporter::log.RemoveRange(0, ConfigImporter::log.Length);

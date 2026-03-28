@@ -3,7 +3,7 @@
 // --- Safe JSON Helpers ---
 
 uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return uint(v);
     if (v.GetType() == Json::Type::String) return Text::ParseUInt(string(v));
@@ -11,7 +11,7 @@ uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0)
 }
 
 int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return int(v);
     if (v.GetType() == Json::Type::String) return Text::ParseInt(string(v));
@@ -19,7 +19,7 @@ int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
 }
 
 bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = false) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Boolean) return bool(v);
     if (v.GetType() == Json::Type::Number) return int(v) != 0;
@@ -31,11 +31,24 @@ bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = fa
 }
 
 string JsonGetString(Json::Value@ json, const string &in key, const string &in defaultValue = "") {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::String) return string(v);
     if (v.GetType() == Json::Type::Number || v.GetType() == Json::Type::Boolean) return Json::Write(v);
     return defaultValue;
+}
+
+Json::Value@ JsonDeepExtract(Json::Value@ json) {
+    if (json is null || json.GetType() != Json::Type::Object) return json;
+    
+    // If it's a wrapper for a specific resource type
+    if (json.HasKey("activity") && json["activity"].GetType() == Json::Type::Object) return json["activity"];
+    if (json.HasKey("campaign") && json["campaign"].GetType() == Json::Type::Object) return json["campaign"];
+    if (json.HasKey("room") && json["room"].GetType() == Json::Type::Object) return json["room"];
+    if (json.HasKey("news") && json["news"].GetType() == Json::Type::Object) return json["news"];
+    if (json.HasKey("folder") && json["folder"].GetType() == Json::Type::Object) return json["folder"];
+    
+    return json;
 }
 
 // --- Classes ---
@@ -124,6 +137,29 @@ class Activity {
     string Headline;
     string Body;
     string Description;
+    bool DetailsLoaded = false;
+
+    void UpdateFromDetail(Json::Value@ json) {
+        if (json is null || json.GetType() != Json::Type::Object) return;
+        
+        // Detail responses are often nested under a type key (e.g. "room": {...})
+        Json::Value@ details = null;
+        if (json.HasKey("room")) @details = json["room"];
+        else if (json.HasKey("campaign")) @details = json["campaign"];
+        else if (json.HasKey("news")) @details = json["news"];
+        else @details = json;
+
+        Description = JsonGetString(details, "description");
+        if (Type == "news") {
+            Headline = JsonGetString(details, "headline");
+            Body = JsonGetString(details, "body");
+            NewsLoaded = true;
+        } else if (Type == "room") {
+            // In the detailed room response, this is often called 'campaignId'
+            MirrorCampaignId = JsonGetUint(details, "campaignId");
+        }
+        DetailsLoaded = true;
+    }
 
     // Curation specific
     bool IsAuditing = false;
