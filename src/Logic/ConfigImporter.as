@@ -275,14 +275,16 @@ namespace ConfigImporter {
                 string mirrorName = JsonGetString(json, "mirrorCampaignName");
                 if (mirrorName != "") {
                     uint targetMirrorId = FindCampaignIdByName(mirrorName, existing);
-                    if (targetMirrorId > 0 && targetMirrorId != act.MirrorCampaignId) {
-                        Log("Updating mirror link for room '" + name + "' to campaign: " + mirrorName + " (Mirror ID: " + targetMirrorId + " | Current: " + act.MirrorCampaignId + ")");
-                        if (!dryRun) {
-                            Json::Value@ data = Json::Object();
-                            data["campaignId"] = int(targetMirrorId);
-                            API::EditClubActivity(clubId, actId, data);
+                    if (targetMirrorId > 0) {
+                        if (act.MirrorCampaignId == targetMirrorId) {
+                            // Perfect match, no change needed
+                        } else if (act.MirrorCampaignId == 0) {
+                            Log("[Unsupported] Room '" + name + "' already exists and is not linked to a campaign. Linking existing rooms is not supported by the TM API.", LogType::Warning);
+                            currentDelta.Warnings++;
+                        } else {
+                            Log("[Unsupported] Room '" + name + "' is already linked to campaign ID " + act.MirrorCampaignId + ". Changing room links is not supported by the TM API.", LogType::Warning);
+                            currentDelta.Warnings++;
                         }
-                        changed = true;
                     }
                 }
             }
@@ -439,6 +441,9 @@ namespace ConfigImporter {
             
             if (detail !is null) {
                 act.UpdateFromDetail(JsonDeepExtract(detail));
+                trace("[Importer] Loaded details for " + act.Name + " (Mirror ID: " + act.MirrorCampaignId + ")");
+            } else {
+                warn("[Importer] Failed to load details for " + act.Name + " (Type: " + act.Type + " | ID: " + act.Id + " | Room ID: " + act.RoomId + ")");
             }
         }
 

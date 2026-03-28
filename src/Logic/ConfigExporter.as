@@ -82,7 +82,7 @@ namespace ConfigExporter {
             // Find the campaign name by ID in the list of all activities
             string mirrorName = "";
             for (uint i = 0; i < all.Length; i++) {
-                if (all[i].Id == a.MirrorCampaignId) {
+                if (all[i].Type == "campaign" && all[i].CampaignId == a.MirrorCampaignId) {
                     mirrorName = all[i].Name;
                     break;
                 }

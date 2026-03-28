@@ -316,6 +316,7 @@ void LoadActivityMaps(ref@ r) {
                 campaignId = uint(json["room"]["campaignId"]);
             }
             a.CampaignId = campaignId; // Update so SEVER button shows up
+            a.MirrorCampaignId = campaignId; // Unify with UI/Importer monitoring
             
             Json::Value@ list = null;
             if (campaignId > 0) {

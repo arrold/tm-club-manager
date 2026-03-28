@@ -156,7 +156,19 @@ class Activity {
             NewsLoaded = true;
         } else if (Type == "room") {
             // In the detailed room response, this is often called 'campaignId'
-            MirrorCampaignId = JsonGetUint(details, "campaignId");
+            uint newCid = JsonGetUint(details, "campaignId");
+            if (newCid == 0) newCid = JsonGetUint(details, "CampaignId");
+            if (newCid == 0) newCid = JsonGetUint(details, "mirrorCampaignId");
+            
+            // Protection: Never overwrite a known valid ID with 0 (which usually means a missing key in the detail response)
+            if (newCid > 0) {
+                MirrorCampaignId = newCid;
+                CampaignId = newCid; // Sync redundant property
+                trace("[Models] Room Detail Updated: " + Name + " (ID: " + MirrorCampaignId + ")");
+            } else if (MirrorCampaignId > 0) {
+                trace("[Models] Room Detail Update: Preserving existing Mirror ID: " + MirrorCampaignId + " (Detail returned 0)");
+                CampaignId = MirrorCampaignId; // Ensure sync
+            }
         }
         DetailsLoaded = true;
     }
@@ -204,6 +216,13 @@ class Activity {
             RoomId = JsonGetUint(json, "roomId");
             if (RoomId == 0) RoomId = Id; // fallback
             MirrorCampaignId = JsonGetUint(json, "campaignId");
+            if (MirrorCampaignId == 0) MirrorCampaignId = JsonGetUint(json, "CampaignId");
+            if (MirrorCampaignId == 0) MirrorCampaignId = JsonGetUint(json, "mirrorCampaignId");
+            
+            // Sync with CampaignId property for consistency across logic
+            if (MirrorCampaignId > 0) CampaignId = MirrorCampaignId;
+            
+            trace("[Models] Room discovered: " + Name + " (Mirror ID: " + MirrorCampaignId + " | Room ID: " + RoomId + ")");
         }
     }
 }
