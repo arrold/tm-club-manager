@@ -15,7 +15,6 @@ void Main() {
     CustomLists::Load();
     MetadataOverrides::Load();
     AuditCache::Init();
-    Testing::Init();
     startnew(MetadataOverrides::SyncAllNames);
     
     // Initialize UI Tabs
