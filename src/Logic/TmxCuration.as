@@ -342,6 +342,13 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
     return filtered;
 }
 
+void StartFreshTmxSearch() {
+    // Clears the browse cache so DoTmxSearch rebuilds rather than serving stale results.
+    // Called by the Search button; Prev/Next call DoTmxSearch directly to preserve the cache.
+    State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+    DoTmxSearch();
+}
+
 void DoTmxSearch() {
     TmxSearchFilters@ f = State::tmxFilters.Clone();
     if (f.CurrentPage < 1) f.CurrentPage = 1;
@@ -352,8 +359,8 @@ void DoTmxSearch() {
     if (isSlowCombo) {
         uint startIdx = uint(requestedPage - 1) * pageSize;
 
-        // Page 2+ with a warm cache: serve instantly with no network call.
-        if (requestedPage > 1 && State::tmxBrowseCache.Length > startIdx) {
+        // Serve from cache if it covers this page (includes page 1 on Prev navigation).
+        if (State::tmxBrowseCache.Length > startIdx) {
             State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
             for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
                 State::tmxSearchResults.InsertLast(State::tmxBrowseCache[i]);
@@ -391,8 +398,7 @@ void DoTmxSearch() {
         return;
     }
 
-    // Normal path — no caching needed.
-    State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+    // Normal path.
     State::searchInProgress = true;
 
     TmxMap@[] results = FetchMapsSequential(f, pageSize, true, false);

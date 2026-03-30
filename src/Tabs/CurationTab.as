@@ -165,7 +165,7 @@ class CurationTab : Tab {
             f.CurrentPage = 1;
             f.TimeFromMs = (f.hFrom * 3600000) + (f.mFrom * 60000) + (f.sFrom * 1000);
             f.TimeToMs = (f.hTo * 3600000) + (f.mTo * 60000) + (f.sTo * 1000);
-            startnew(DoTmxSearch);
+            startnew(StartFreshTmxSearch);
         }
         UI::SameLine();
         if (UI::Button(Icons::AngleLeft + " Prev")) {
