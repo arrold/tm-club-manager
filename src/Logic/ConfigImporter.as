@@ -17,6 +17,8 @@ namespace ConfigImporter {
 
     LogEntry@[] log;
     uint[] keptIds; // Activity IDs touched (matched or created) during the current import run
+    uint[] pendingPositionIds;   // Queue for two-pass position assignment
+    uint[] pendingPositionValues;
 
     string[] GetAvailableConfigs() {
         string[] files;
@@ -74,6 +76,8 @@ namespace ConfigImporter {
         @currentDelta = DeltaSummary();
         log.RemoveRange(0, log.Length);
         keptIds.RemoveRange(0, keptIds.Length);
+        pendingPositionIds.RemoveRange(0, pendingPositionIds.Length);
+        pendingPositionValues.RemoveRange(0, pendingPositionValues.Length);
         Log("Starting " + (dryRun ? "DRY RUN " : "") + "import for Club: " + State::SelectedClub.Name);
 
         // 0. Pre-flight Validation
@@ -126,6 +130,9 @@ namespace ConfigImporter {
         if (prune) {
             PruneUntouched(existing, clubId);
         }
+
+        // 5. Two-pass position assignment — avoids conflicts when target positions are already occupied.
+        if (!dryRun) ApplyPendingPositions(clubId);
 
         Log("Import complete.");
         Log(currentDelta.ToLogString());
@@ -198,8 +205,8 @@ namespace ConfigImporter {
             uint desiredPos = JsonGetUint(json, "position");
             uint currentPos = (folder !is null) ? folder.Position : 999;
             if (currentPos != desiredPos) {
-                Log((dryRun ? "[Dry Run] " : "") + "Setting position of folder '" + name + "' to " + desiredPos);
-                if (!dryRun) API::SetActivityPosition(clubId, folderId, desiredPos);
+                Log((dryRun ? "[Dry Run] " : "") + "Queuing position of folder '" + name + "' to " + desiredPos);
+                if (!dryRun) QueuePosition(folderId, desiredPos);
             }
         }
 
@@ -336,10 +343,34 @@ namespace ConfigImporter {
             uint desiredPos = JsonGetUint(json, "position");
             uint currentPos = (act !is null) ? act.Position : 999;
             if (currentPos != desiredPos) {
-                Log((dryRun ? "[Dry Run] " : "") + "Setting position of '" + name + "' to " + desiredPos);
-                if (!dryRun) API::SetActivityPosition(clubId, actId, desiredPos);
+                Log((dryRun ? "[Dry Run] " : "") + "Queuing position of '" + name + "' to " + desiredPos);
+                if (!dryRun) QueuePosition(actId, desiredPos);
             }
         }
+    }
+
+    void QueuePosition(uint actId, uint desiredPos) {
+        pendingPositionIds.InsertLast(actId);
+        pendingPositionValues.InsertLast(desiredPos);
+    }
+
+    void ApplyPendingPositions(uint clubId) {
+        if (pendingPositionIds.Length == 0) return;
+        Log("Applying " + pendingPositionIds.Length + " position changes (2-pass)...");
+
+        // Pass 1: move everything to safely high temp positions so no target slot is occupied.
+        const uint tempBase = 10000;
+        for (uint i = 0; i < pendingPositionIds.Length; i++) {
+            API::SetActivityPosition(clubId, pendingPositionIds[i], tempBase + i);
+            yield();
+        }
+
+        // Pass 2: set the real target positions — all slots are now free.
+        for (uint i = 0; i < pendingPositionIds.Length; i++) {
+            API::SetActivityPosition(clubId, pendingPositionIds[i], pendingPositionValues[i]);
+            yield();
+        }
+        Log("Positions applied.");
     }
 
     void MarkKept(uint id) {
