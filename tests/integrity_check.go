@@ -157,6 +157,62 @@ func main() {
 		errors++
 	}
 
+	// 11. CurrentPage included in subscription diff check
+	// Without this, importing a config with CurrentPage:2 on an existing subscription with
+	// CurrentPage:1 will be silently ignored — page-2+ campaigns will show the same maps as page 1.
+	if !checkFileContains("src/Models.as", "CurrentPage != other.CurrentPage") {
+		fmt.Println("[FAIL] Models.as: CurrentPage missing from GetDifference. Page-2+ subscription changes will be silently ignored on import.")
+		errors++
+	}
+
+	// 12. ExportFolder must emit type=folder
+	// Without this, sub-folders in the exported config have no type field and the importer
+	// skips them entirely — no sub-folders will be created.
+	if !checkFileContains("src/Logic/ConfigExporter.as", `json["type"] = "folder"`) {
+		fmt.Println("[FAIL] ConfigExporter.as: ExportFolder must emit type=folder. Sub-folders will be silently skipped on import.")
+		errors++
+	}
+
+	// 13. Activity ID extracted from raw response before JsonDeepExtract
+	// JsonDeepExtract can return a campaign sub-object whose "id" is the campaign resource ID,
+	// not the activity ID. Subscriptions saved with the wrong ID are never found on export.
+	if !checkFileContains("src/Logic/ConfigImporter.as", `JsonGetUint(resp, "activityId")`) {
+		fmt.Println("[FAIL] ConfigImporter.as: Activity ID must be read from raw response before JsonDeepExtract. Campaign subscriptions will be saved with wrong ID.")
+		errors++
+	}
+
+	// 14. Campaign activation workaround (SetActivityStatus after SyncActivityMetadata)
+	// Nadeo always creates campaigns inactive. The workaround must run AFTER SyncActivityMetadata
+	// or the metadata edit will overwrite active=true back to false.
+	if !checkFileContains("src/Logic/ConfigImporter.as", "Nadeo API bug workaround") {
+		fmt.Println("[FAIL] ConfigImporter.as: Campaign activation workaround missing or comment removed. New campaigns will always be created inactive.")
+		errors++
+	}
+
+	// 15. Two-pass position assignment in importer
+	// Setting positions directly causes conflicts when a target slot is already occupied by
+	// another item, cascading into wrong ordering. Pass 1 must move to temp positions first.
+	if !checkFileContains("src/Logic/ConfigImporter.as", "ApplyPendingPositions") {
+		fmt.Println("[FAIL] ConfigImporter.as: Two-pass position assignment missing. Positions will conflict and ordering will be scrambled during import.")
+		errors++
+	}
+	if !checkFileContains("src/Logic/ConfigImporter.as", "const uint tempBase = 500") {
+		fmt.Println("[FAIL] ConfigImporter.as: Temp position base should be 500 (not 10000 or other). Keeps positions in 3-digit range.")
+		errors++
+	}
+	if !checkFileContains("src/Logic/ConfigImporter.as", "tempBase + i") {
+		fmt.Println("[FAIL] ConfigImporter.as: Pass 1 (temp position relocation) missing from ApplyPendingPositions.")
+		errors++
+	}
+
+	// 16. Slow-combo batchSize=100 in FetchMapsSequential
+	// For Awards Most + Not TOTD searches, a small batch size causes a second page fetch which
+	// times out, resulting in audit removals with no additions.
+	if !checkFileContains("src/Logic/TmxCuration.as", "isSlowCombo ? 100") {
+		fmt.Println("[FAIL] TmxCuration.as: Slow combo batchSize=100 missing. Not-TOTD audits will time out on page 2, removing maps without replacements.")
+		errors++
+	}
+
 	if errors == 0 {
 		fmt.Println("--- [TM Club Manager] ALL INTEGRITY CHECKS PASSED ---")
 		os.Exit(0)

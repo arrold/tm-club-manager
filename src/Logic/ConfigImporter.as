@@ -358,19 +358,47 @@ namespace ConfigImporter {
         if (pendingPositionIds.Length == 0) return;
         Log("Applying " + pendingPositionIds.Length + " position changes (2-pass)...");
 
+        const uint tempBase = 500;
+
         // Pass 1: move everything to safely high temp positions so no target slot is occupied.
-        const uint tempBase = 10000;
+        uint[] tempPositions;
         for (uint i = 0; i < pendingPositionIds.Length; i++) {
-            API::SetActivityPosition(clubId, pendingPositionIds[i], tempBase + i);
-            yield();
+            tempPositions.InsertLast(tempBase + i);
         }
+        ApplyPositionBatch(clubId, pendingPositionIds, tempPositions);
 
         // Pass 2: set the real target positions — all slots are now free.
-        for (uint i = 0; i < pendingPositionIds.Length; i++) {
-            API::SetActivityPosition(clubId, pendingPositionIds[i], pendingPositionValues[i]);
-            yield();
-        }
+        ApplyPositionBatch(clubId, pendingPositionIds, pendingPositionValues);
+
         Log("Positions applied.");
+    }
+
+    // Fires position-set requests in parallel batches rather than one at a time.
+    // Batching avoids hammering the API while still being ~batchSize times faster than sequential.
+    void ApplyPositionBatch(uint clubId, uint[]& ids, uint[]& positions) {
+        const uint batchSize = 8;
+        string baseUrl = NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/";
+
+        for (uint start = 0; start < ids.Length; start += batchSize) {
+            uint end = Math::Min(start + batchSize, ids.Length);
+
+            while (!NadeoServices::IsAuthenticated("NadeoLiveServices")) yield();
+
+            // Fire all requests in this batch without waiting for each one.
+            Net::HttpRequest@[] inflight;
+            for (uint i = start; i < end; i++) {
+                Json::Value@ data = Json::Object();
+                data["position"] = int(positions[i]);
+                Net::HttpRequest@ req = NadeoServices::Post("NadeoLiveServices", baseUrl + ids[i] + "/edit", Json::Write(data));
+                req.Start();
+                inflight.InsertLast(req);
+            }
+
+            // Now wait for all in-flight requests to finish before the next batch.
+            for (uint i = 0; i < inflight.Length; i++) {
+                while (!inflight[i].Finished()) yield();
+            }
+        }
     }
 
     void MarkKept(uint id) {
