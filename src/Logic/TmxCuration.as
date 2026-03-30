@@ -24,7 +24,10 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         authorId = TMX::GetUserId(f.AuthorNames[0]);
     }
 
-    uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50));
+    // For the expensive "Awards Most + Not TOTD" combo, fetch 100 maps per batch so the audit
+    // can satisfy the limit (max 25) in a single API call, avoiding a second-page timeout.
+    bool isSlowCombo = (f.InTOTD == 0 && f.SortPrimary == 0);
+    uint batchSize = isSlowCombo ? 100 : Math::Min(Math::Max(limit, uint(25)), uint(50));
     uint targetLength = totalNeeded;
     uint safetyLimit = 0;
     const uint maxPages = 20;

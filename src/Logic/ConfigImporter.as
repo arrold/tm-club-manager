@@ -237,10 +237,19 @@ namespace ConfigImporter {
                     else Log("Resolved mirror '" + mirrorName + "' to ID: " + mirrorId);
                 }
                 Json::Value@ resp = API::CreateClubActivity(clubId, name, type, folderId, active, mirrorId);
+                // Extract activity ID from raw response before deep extraction.
+                // Deep extraction may return a resource sub-object (e.g. "campaign") whose "id" is
+                // the campaign resource ID, not the activity ID. Raw response always has activityId.
+                if (resp !is null) {
+                    actId = JsonGetUint(resp, "activityId");
+                    if (actId == 0) actId = JsonGetUint(resp, "id");
+                }
                 Json::Value@ activityJson = JsonDeepExtract(resp);
                 if (activityJson !is null && activityJson.GetType() == Json::Type::Object) {
-                    actId = JsonGetUint(activityJson, "id");
-                    if (actId == 0) actId = JsonGetUint(activityJson, "activityId");
+                    if (actId == 0) {
+                        actId = JsonGetUint(activityJson, "activityId");
+                        if (actId == 0) actId = JsonGetUint(activityJson, "id");
+                    }
                     
                     Log("Successfully created " + type + " '" + name + "' with ID: " + actId);
 

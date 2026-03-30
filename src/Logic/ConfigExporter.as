@@ -46,6 +46,7 @@ namespace ConfigExporter {
     Json::Value@ ExportFolder(Activity@ f, Activity@[]@ all) {
         Json::Value@ json = Json::Object();
         json["name"] = f.Name;
+        json["type"] = "folder";
         json["position"] = int(f.Position);
         json["active"] = f.Active;
         json["featured"] = f.Featured;
