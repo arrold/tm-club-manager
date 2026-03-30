@@ -16,6 +16,7 @@ namespace ConfigImporter {
     }
 
     LogEntry@[] log;
+    uint[] keptIds; // Activity IDs touched (matched or created) during the current import run
 
     string[] GetAvailableConfigs() {
         string[] files;
@@ -45,13 +46,14 @@ namespace ConfigImporter {
         uint ActivitiesCreated = 0;
         uint ActivitiesUpdated = 0;
         uint ActivitiesVerified = 0;
+        uint ActivitiesDeleted = 0;
         uint SubscriptionsUpdated = 0;
         uint Warnings = 0;
         uint Errors = 0;
 
         string ToLogString() {
             return "Summary: Folders: " + FoldersCreated + " Created, " + FoldersUpdated + " Updated, " + FoldersVerified + " Verified | " +
-                   "Activities: " + ActivitiesCreated + " Created, " + ActivitiesUpdated + " Updated, " + ActivitiesVerified + " Verified | " +
+                   "Activities: " + ActivitiesCreated + " Created, " + ActivitiesUpdated + " Updated, " + ActivitiesVerified + " Verified, " + ActivitiesDeleted + " Deleted | " +
                    "Subscriptions: " + SubscriptionsUpdated + " Updated | " +
                    "Warnings: " + Warnings + " | Errors: " + Errors;
         }
@@ -71,6 +73,7 @@ namespace ConfigImporter {
         dryRun = isDryRun;
         @currentDelta = DeltaSummary();
         log.RemoveRange(0, log.Length);
+        keptIds.RemoveRange(0, keptIds.Length);
         Log("Starting " + (dryRun ? "DRY RUN " : "") + "import for Club: " + State::SelectedClub.Name);
 
         // 0. Pre-flight Validation
@@ -119,15 +122,15 @@ namespace ConfigImporter {
             }
         }
 
-        // 4. Pruning (if enabled)
+        // 4. Pruning (if enabled) — delete any club activity not referenced by the config.
         if (prune) {
-            Log("Pruning is enabled but not yet fully implemented for safety.");
+            PruneUntouched(existing, clubId);
         }
 
         Log("Import complete.");
         Log(currentDelta.ToLogString());
-        
-        if (currentDelta.FoldersCreated == 0 && currentDelta.ActivitiesCreated == 0 && currentDelta.ActivitiesUpdated == 0 && currentDelta.SubscriptionsUpdated == 0) {
+
+        if (currentDelta.FoldersCreated == 0 && currentDelta.ActivitiesCreated == 0 && currentDelta.ActivitiesUpdated == 0 && currentDelta.SubscriptionsUpdated == 0 && currentDelta.ActivitiesDeleted == 0) {
             Log("Result: 0 Changes Pending. Local state perfectly matches remote.");
         }
 
@@ -187,6 +190,8 @@ namespace ConfigImporter {
             currentDelta.Errors++;
             return;
         }
+
+        MarkKept(folderId);
 
         // Position: set if specified in config and differs from current.
         if (json.HasKey("position")) {
@@ -255,6 +260,7 @@ namespace ConfigImporter {
 
                     // Add newly created activity to existing list so siblings can mirror it!
                     Activity@ newAct = Activity(activityJson);
+                    newAct.Id = actId; // Ensure Id matches the activity ID, not a resource sub-object ID
                     newAct.FolderId = folderId;
                     existing.InsertLast(newAct);
 
@@ -319,6 +325,8 @@ namespace ConfigImporter {
             else currentDelta.ActivitiesVerified++;
         }
 
+        MarkKept(actId);
+
         if (actId > 0 && json.HasKey("subscription")) {
             ApplySubscription(actId, name, json["subscription"], act, clubId);
         }
@@ -332,6 +340,37 @@ namespace ConfigImporter {
                 if (!dryRun) API::SetActivityPosition(clubId, actId, desiredPos);
             }
         }
+    }
+
+    void MarkKept(uint id) {
+        if (id == 0) return;
+        for (uint i = 0; i < keptIds.Length; i++) {
+            if (keptIds[i] == id) return;
+        }
+        keptIds.InsertLast(id);
+    }
+
+    bool IsKept(uint id) {
+        for (uint i = 0; i < keptIds.Length; i++) {
+            if (keptIds[i] == id) return true;
+        }
+        return false;
+    }
+
+    void PruneUntouched(Activity@[]& existing, uint clubId) {
+        uint pruned = 0;
+        for (uint i = 0; i < existing.Length; i++) {
+            if (IsKept(existing[i].Id)) continue;
+            Log((dryRun ? "[Dry Run] " : "") + "Pruning " + existing[i].Type + " '" + existing[i].Name + "' (ID: " + existing[i].Id + ") — not in config");
+            currentDelta.ActivitiesDeleted++;
+            if (!dryRun) {
+                API::DeleteActivity(clubId, existing[i].Id);
+                // Also remove the orphaned subscription if one exists
+                Subscriptions::Remove(existing[i].Id);
+            }
+            pruned++;
+        }
+        if (pruned == 0) Log("Prune: nothing to remove — club matches config exactly.");
     }
 
     Activity@ FindExisting(const string &in name, const string &in type, uint folderId, Activity@[]& existing) {
