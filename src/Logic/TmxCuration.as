@@ -2,10 +2,10 @@
 
 /*
  * Sequential TMX Fetching:
- * TMX API (V1) has stability issues with large offsets. This function implements 
- * a "cursor-based" sequential scan using TrackId (afterId) to reliably page through 
- * results. It also handles client-side filtering for attributes TMX cannot 
- * natively filter (e.g., precise time ranges or multi-tag combinations).
+ * Uses TMX's &after=<TrackId> positional cursor to page through results.
+ * The cursor is always taken from the last raw entry in each API response — not the
+ * last filtered entry — so client-side filtering (denylist, difficulty override) never
+ * causes the same page to be re-fetched.
  */
 TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true) {
     if (f.AuthorNames.Length > 1) {
@@ -34,6 +34,23 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache, "", authorId);
         if (json is null) break;
 
+        // Read the last raw TrackId before filtering — used as the positional cursor for the next page.
+        // &after=X is a positional cursor in the sorted result set, not a MapId filter.
+        // We must advance by the raw batch boundary, not the filtered one, so client-side
+        // filtering (denylist, difficulty override) never causes the same page to be re-fetched.
+        uint rawLastId = 0;
+        {
+            Json::Value@ rawResults = null;
+            if (json.GetType() == Json::Type::Array) @rawResults = json;
+            else if (json.HasKey("Results") && json["Results"].GetType() == Json::Type::Array) @rawResults = json["Results"];
+            else if (json.HasKey("results") && json["results"].GetType() == Json::Type::Array) @rawResults = json["results"];
+            else if (json.HasKey("MapList") && json["MapList"].GetType() == Json::Type::Array) @rawResults = json["MapList"];
+            if (rawResults !is null && rawResults.Length > 0) {
+                Json::Value@ last = rawResults[rawResults.Length - 1];
+                rawLastId = last.HasKey("MapId") ? uint(last["MapId"]) : (last.HasKey("TrackId") ? uint(last["TrackId"]) : 0);
+            }
+        }
+
         int fetchedCount = 0;
         TmxMap@[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
 
@@ -47,22 +64,17 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         if (fetchedCount < int(batchSize)) break;
         if (json.HasKey("More") && !bool(json["More"])) break;
 
-        // Safety: If we've searched multiple pages and found ZERO matches for a specific author, 
+        // Safety: If we've searched multiple pages and found ZERO matches for a specific author,
         // the server's author filter is almost certainly failing/ignored.
         if (allResults.Length == 0 && safetyLimit >= 2 && f.AuthorNames.Length > 0) {
             warn("[TMX] Server returned maps but none matched '" + f.AuthorNames[0] + "'. Stopping search to prevent loop.");
             break;
         }
 
-        if (batch.Length > 0 && int(batch.Length) == fetchedCount) {
-            // No client-side filtering occurred — safe to use cursor (avoids large-offset instability in TMX V1)
-            lastId = batch[batch.Length - 1].TrackId;
+        if (rawLastId > 0) {
+            lastId = rawLastId;
             offset = 0;
         } else {
-            // Client-side filtering removed some maps (denylist / difficulty override).
-            // The TMX &after= parameter means MapId > X, not a positional cursor. Using
-            // the last valid map's TrackId as the cursor would skip valid replacements that
-            // have a lower MapId (older high-award maps). Advance by raw count via offset instead.
             offset += fetchedCount;
             lastId = 0;
         }
