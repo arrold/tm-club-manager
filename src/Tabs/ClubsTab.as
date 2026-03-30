@@ -131,6 +131,7 @@ class ClubsTab : Tab {
                 UI::SameLine();
                 if (UI::Button(Icons::Refresh + " Re-Audit All")) startnew(DoBulkAudit);
                 UI::TextDisabled(State::bulkAuditStatus);
+                RenderAuditSummary();
             } else {
                 UI::Text("\\$8f8" + Icons::Check + " Audit Complete: All subscriptions are up to date.");
                 if (UI::Button(Icons::Refresh + " Re-Audit All")) startnew(DoBulkAudit);
@@ -202,6 +203,40 @@ class ClubsTab : Tab {
                 }
             }
             UI::EndChild();
+        }
+    }
+
+    void RenderAuditSummary() {
+        UI::PushStyleColor(UI::Col::Header, vec4(0.15f, 0.15f, 0.15f, 0.5f));
+        bool open = UI::CollapsingHeader(Icons::ListUl + " Changed Activities");
+        UI::PopStyleColor();
+        if (!open) return;
+
+        bool anyShown = false;
+        for (uint i = 0; i < State::ClubActivities.Length; i++) {
+            Activity@ a = State::ClubActivities[i];
+            if (!a.AuditDone) continue;
+            if (a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0 && !a.AuditOrderMismatch) continue;
+
+            anyShown = true;
+            string icon = a.Type == "campaign" ? Icons::Flag : Icons::Gamepad;
+            UI::Text(icon + " " + a.Name);
+            UI::SameLine(0, 12);
+            if (a.AuditAdded.Length > 0) {
+                UI::Text("\\$0f0+" + a.AuditAdded.Length);
+                UI::SameLine(0, 8);
+            }
+            if (a.AuditRemoved.Length > 0) {
+                UI::Text("\\$f44-" + a.AuditRemoved.Length);
+                UI::SameLine(0, 8);
+            }
+            if (a.AuditOrderMismatch) {
+                UI::TextDisabled("(order changed)");
+            }
+        }
+
+        if (!anyShown) {
+            UI::TextDisabled("No details available.");
         }
     }
 

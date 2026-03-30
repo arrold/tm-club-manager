@@ -69,6 +69,35 @@ namespace MetadataOverrides {
         Save();
     }
 
+    void AddExtraTag(const string &in uid, const string &in tag) {
+        Load();
+        if (!data.HasKey(uid)) data[uid] = Json::Object();
+        // Build the updated ExtraTags array, avoiding duplicates
+        Json::Value@ existing = data[uid].HasKey("ExtraTags") ? data[uid]["ExtraTags"] : Json::Array();
+        for (uint i = 0; i < existing.Length; i++) {
+            if (string(existing[i]) == tag) return; // already present
+        }
+        existing.Add(tag);
+        data[uid]["ExtraTags"] = existing;
+        Save();
+    }
+
+    void RemoveExtraTag(const string &in uid, const string &in tag) {
+        Load();
+        if (!data.HasKey(uid) || !data[uid].HasKey("ExtraTags")) return;
+        Json::Value@ updated = Json::Array();
+        Json::Value@ existing = data[uid]["ExtraTags"];
+        for (uint i = 0; i < existing.Length; i++) {
+            if (string(existing[i]) != tag) updated.Add(string(existing[i]));
+        }
+        data[uid]["ExtraTags"] = updated;
+        // Clean up the override entry entirely if nothing remains
+        if (updated.Length == 0 && !data[uid].HasKey("Name") && !data[uid].HasKey("Difficulty") && !data[uid].HasKey("Tags")) {
+            data.Remove(uid);
+        }
+        Save();
+    }
+
     void SetTags(const string &in uid, string[]@ tags) {
         Load();
         if (!data.HasKey(uid)) data[uid] = Json::Object();
@@ -97,6 +126,14 @@ namespace MetadataOverrides {
             map.Tags.RemoveRange(0, map.Tags.Length);
             for (uint i = 0; i < override["Tags"].Length; i++) {
                 map.Tags.InsertLast(string(override["Tags"][i]));
+            }
+        }
+        if (override.HasKey("ExtraTags") && override["ExtraTags"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < override["ExtraTags"].Length; i++) {
+                string extraTag = string(override["ExtraTags"][i]);
+                if (map.Tags.Find(extraTag) < 0) {
+                    map.Tags.InsertLast(extraTag);
+                }
             }
         }
     }
@@ -128,8 +165,8 @@ namespace MetadataOverrides {
                         string[] newTags;
                         newTags.InsertLast(surface); // New primary surface goes first
                         for (uint j = 0; j < map.Tags.Length; j++) {
-                            // Keep other tags that ARE NOT surfaces
-                            if (!TMX::ArrayContains(TMX::SURFACE_TAGS, map.Tags[j])) {
+                            // Keep all other tags (including other surfaces — they are demoted, not removed)
+                            if (map.Tags[j] != surface) {
                                 newTags.InsertLast(map.Tags[j]);
                             }
                         }
@@ -139,6 +176,35 @@ namespace MetadataOverrides {
                     }
                 }
                 UI::EndMenu();
+            }
+
+            if (UI::BeginMenu(Icons::PlusCircle + " Add Tag")) {
+                for (uint t = 0; t < TMX::TAG_NAMES.Length; t++) {
+                    string tag = TMX::TAG_NAMES[t];
+                    if (map.Tags.Find(tag) >= 0) continue; // already on this map
+                    if (UI::MenuItem(tag)) {
+                        AddExtraTag(map.Uid, tag);
+                        SetName(map.Uid, map.Name);
+                        map.Tags.InsertLast(tag);
+                    }
+                }
+                UI::EndMenu();
+            }
+
+            // Show removable extra tags (only tags added via override)
+            Json::Value@ ovr = data.HasKey(map.Uid) ? data[map.Uid] : null;
+            if (ovr !is null && ovr.HasKey("ExtraTags") && ovr["ExtraTags"].GetType() == Json::Type::Array && ovr["ExtraTags"].Length > 0) {
+                if (UI::BeginMenu(Icons::MinusCircle + " Remove Added Tag")) {
+                    for (uint t = 0; t < ovr["ExtraTags"].Length; t++) {
+                        string tag = string(ovr["ExtraTags"][t]);
+                        if (UI::MenuItem(tag)) {
+                            RemoveExtraTag(map.Uid, tag);
+                            int idx = map.Tags.Find(tag);
+                            if (idx >= 0) map.Tags.RemoveAt(idx);
+                        }
+                    }
+                    UI::EndMenu();
+                }
             }
 
             UI::Separator();
