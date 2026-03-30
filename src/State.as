@@ -24,6 +24,7 @@ namespace State {
     TmxSearchFilters tmxFilters;
     TmxMap@[] tmxSearchResults;
     bool[] tmxSelected;
+    TmxMap@[] tmxBrowseCache; // Full result set for client-side pagination (slow combo only)
     Activity@ TargetActivity;
     bool searchInProgress = false;
     bool bulkAuditInProgress = false;

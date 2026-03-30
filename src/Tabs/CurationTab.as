@@ -186,11 +186,10 @@ class CurationTab : Tab {
             State::tmxFilters = TmxSearchFilters();
         }
 
-        // Awards Most + Not TOTD fetches 100 results upfront to avoid slow cursor requests.
-        // Pages 1–4 are served from that single fast fetch. Page 5+ may be slow.
+        // Awards Most + Not TOTD fetches 100 results upfront; subsequent pages are instant from cache.
         if (f.SortPrimary == 0 && f.InTOTD == 0) {
             UI::PushStyleColor(UI::Col::Text, vec4(0.6f, 0.6f, 0.6f, 1.0f));
-            UI::Text(Icons::ClockO + " 'Awards Most' + 'Not TOTD': pages 1–4 are pre-fetched. Page 5+ may be slow.");
+            UI::Text(Icons::ClockO + " 'Awards Most' + 'Not TOTD': first 100 results cached on search. Paging is instant within that set.");
             UI::PopStyleColor();
         }
     }

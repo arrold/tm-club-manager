@@ -24,15 +24,7 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         authorId = TMX::GetUserId(f.AuthorNames[0]);
     }
 
-    // For the known-slow intotd=0 + Awards Most combination, fetch a large first batch
-    // so client-side pagination covers multiple pages without needing the &after= cursor.
-    // The first uncursored request is fast (~1.6s); cursor-based requests can timeout (>30s).
-    uint batchSize;
-    if (f.InTOTD == 0 && f.SortPrimary == 0) {
-        batchSize = 100;
-    } else {
-        batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50));
-    }
+    uint batchSize = Math::Min(Math::Max(limit, uint(25)), uint(50));
     uint targetLength = totalNeeded;
     uint safetyLimit = 0;
     const uint maxPages = 20;
@@ -354,26 +346,68 @@ void DoTmxSearch() {
     TmxSearchFilters@ f = State::tmxFilters.Clone();
     if (f.CurrentPage < 1) f.CurrentPage = 1;
     int requestedPage = f.CurrentPage;
+    bool isSlowCombo = (f.InTOTD == 0 && f.SortPrimary == 0);
+    uint pageSize = uint(f.ResultLimit);
 
-    State::searchInProgress = true;
-    // Don't clear results yet — keep showing previous results under the "Searching..." spinner
-    // so a timeout on a later page doesn't leave the user with a blank screen.
+    if (isSlowCombo) {
+        uint startIdx = uint(requestedPage - 1) * pageSize;
 
-    TmxMap@[] results = FetchMapsSequential(f, uint(f.ResultLimit), true, false);
+        // Page 2+ with a warm cache: serve instantly with no network call.
+        if (requestedPage > 1 && State::tmxBrowseCache.Length > startIdx) {
+            State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+            for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
+                State::tmxSearchResults.InsertLast(State::tmxBrowseCache[i]);
+            }
+            if (State::tmxSearchResults.Length == 0) {
+                State::tmxFilters.CurrentPage = requestedPage - 1;
+                NotifyError("No more results in cache (100 maps fetched total).");
+            }
+            State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
+            for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
+            return;
+        }
 
-    if (results.Length == 0 && requestedPage > 1) {
-        // No results on a non-first page almost certainly means a server timeout.
-        // Roll back the page counter so the user can still see what they had.
-        State::tmxFilters.CurrentPage = requestedPage - 1;
-        NotifyError("Page " + requestedPage + " timed out. Try adding a tag filter to speed up this search.");
-    } else {
+        // Page 1 (or cache exhausted): fetch 100 maps in one uncursored call.
+        State::searchInProgress = true;
+        State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+
+        TmxSearchFilters@ fBase = f.Clone();
+        fBase.CurrentPage = 1;
+        Json::Value@ json = TMX::SearchMaps(fBase, 100, 0, 0, false);
+        if (json !is null) {
+            int dummy = 0;
+            TmxMap@[] allMaps = FilterTmxResults(json, fBase, 100, dummy);
+            for (uint i = 0; i < allMaps.Length; i++) State::tmxBrowseCache.InsertLast(allMaps[i]);
+        }
+
         State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
-        for (uint i = 0; i < results.Length; i++) {
-            State::tmxSearchResults.InsertLast(results[i]);
+        for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
+            State::tmxSearchResults.InsertLast(State::tmxBrowseCache[i]);
         }
         State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
         for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
+
+        State::searchInProgress = false;
+        return;
     }
+
+    // Normal path — no caching needed.
+    State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+    State::searchInProgress = true;
+
+    TmxMap@[] results = FetchMapsSequential(f, pageSize, true, false);
+
+    if (results.Length == 0 && requestedPage > 1) {
+        State::tmxFilters.CurrentPage = requestedPage - 1;
+        NotifyError("Page " + requestedPage + " timed out. Try adding a tag filter to speed up this search.");
+        State::searchInProgress = false;
+        return;
+    }
+
+    State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+    for (uint i = 0; i < results.Length; i++) State::tmxSearchResults.InsertLast(results[i]);
+    State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
+    for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
 
     State::searchInProgress = false;
 }
