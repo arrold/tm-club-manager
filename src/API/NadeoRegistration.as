@@ -2,7 +2,7 @@
 
 namespace Nadeo {
     bool IsMapUploaded(const string &in uid) {
-        auto app = cast<CGameManiaPlanet>(GetApp());
+        CGameManiaPlanet@ app = cast<CGameManiaPlanet>(GetApp());
         auto cma = app.MenuManager.MenuCustom_CurrentManiaApp;
         auto dfm = cma.DataFileMgr;
         auto userId = cma.UserMgr.Users[0].Id;
@@ -21,7 +21,7 @@ namespace Nadeo {
     }
 
     bool RegisterMap(const string &in uid) {
-        auto app = cast<CGameManiaPlanet>(GetApp());
+        CGameManiaPlanet@ app = cast<CGameManiaPlanet>(GetApp());
         auto cma = app.MenuManager.MenuCustom_CurrentManiaApp;
         auto dfm = cma.DataFileMgr;
         auto userId = cma.UserMgr.Users[0].Id;
