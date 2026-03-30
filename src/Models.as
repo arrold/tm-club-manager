@@ -247,7 +247,6 @@ class TmxMap {
     string[] Tags;
     string[] Authors;
     bool HasScreenshot;
-    bool InTotd;
 
     TmxMap() {}
 
@@ -351,7 +350,6 @@ class TmxMap {
 
         UploadedAt = json.HasKey("UploadedAt") ? string(json["UploadedAt"]) : "";
         HasScreenshot = json.HasKey("HasThumbnail") ? bool(json["HasThumbnail"]) : TrackId > 0;
-        InTotd = json.HasKey("InTotd") ? bool(json["InTotd"]) : false;
 
         // Calculate size warnings based on strict user-defined thresholds
         if (ServerSizeExceeded || EmbeddedItemsSize > 4000000 || DisplayCost > 12000) {

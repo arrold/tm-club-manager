@@ -223,7 +223,6 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
         if (Denylist::IsExcluded(m.Uid)) continue;
-        if (f.InTOTD == 0 && m.InTotd) continue; // Client-side TOTD filter (avoids expensive server anti-join)
 
         // Author filter (handles collaborations and tags)
         if (f.AuthorNames.Length > 0) {

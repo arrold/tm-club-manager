@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%5B%5D%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author%2CInTotd";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%5B%5D%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
@@ -102,9 +102,9 @@ namespace TMX {
     Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "", int authorId = -1) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
         
-        // InTOTD == 1: restrict server-side to TOTD maps only
-        // InTOTD == 0: filter client-side using the InTotd field (avoids expensive server anti-join)
+        // Priority filters first for TMX V1 stability
         if (f.InTOTD == 1) params += "&intotd=1";
+        else if (f.InTOTD == 0) params += "&intotd=0";
 
         if (authorId > 0) {
             params += "&authoruserid=" + tostring(authorId);
@@ -157,7 +157,7 @@ namespace TMX {
             int enumVal = GetSortEnumValue(f.SortPrimary);
             if (enumVal >= 0) params += "&order1=" + tostring(enumVal);
         }
-        if (f.SortSecondary >= 0 && f.SortPrimary != 0) {
+        if (f.SortSecondary >= 0 && f.InTOTD != 0 && f.SortPrimary != 0) {
             int enumVal = GetSortEnumValue(f.SortSecondary);
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }
