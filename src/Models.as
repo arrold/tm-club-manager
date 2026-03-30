@@ -770,6 +770,7 @@ class TmxSearchFilters {
         }
         if (InTOTD != other.InTOTD) diff += "InTOTD: " + InTOTD + " != " + other.InTOTD + ", ";
         if (InCollection != other.InCollection) diff += "InCollection: " + InCollection + " != " + other.InCollection + ", ";
+        if (CurrentPage != other.CurrentPage) diff += "CurrentPage: " + CurrentPage + " != " + other.CurrentPage + ", ";
         
         if (IncludeTags.Length != other.IncludeTags.Length) {
             diff += "IncludeTags count mismatch, ";
