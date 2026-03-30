@@ -16,6 +16,10 @@ namespace CM_UI {
                         startnew(RefreshClubs);
                         startnew(RefreshActivities);
                     }
+                    UI::Separator();
+                    if (UI::MenuItem(Icons::Flask + " Probe mapsearch2 (dev)")) {
+                        startnew(Testing::Probe_Mapsearch2);
+                    }
                     UI::EndMenu();
                 }
                 UI::EndMenuBar();

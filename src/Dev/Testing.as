@@ -106,4 +106,88 @@ namespace Testing {
         print("[Test] SortMaps (Multi-level): OK");
         return true;
     }
+
+    void Probe_Mapsearch2() {
+        // Try both common URL patterns — one will 404, one should respond
+        string[] candidates = {
+            "https://trackmania.exchange/mapsearch2?count=1",
+            "https://trackmania.exchange/api/mapsearch2?count=1",
+            "https://trackmania.exchange/api/maps/search2?count=1"
+        };
+
+        for (uint c = 0; c < candidates.Length; c++) {
+            string url = candidates[c];
+            trace("[Probe] Trying: " + url);
+            Net::HttpRequest@ req = Net::HttpRequest();
+            req.Url = url;
+            req.Headers["User-Agent"] = "TM_Plugin:ClubManager / contact=Arrold";
+            req.Headers["Accept"] = "application/json";
+            req.Method = Net::HttpMethod::Get;
+            req.Start();
+            uint64 start = Time::Now;
+            while (!req.Finished()) {
+                if (Time::Now > start + 10000) { req.Cancel(); trace("[Probe] Timed out: " + url); break; }
+                yield();
+            }
+            if (!req.Finished()) continue;
+
+            int code = req.ResponseCode();
+            trace("[Probe] HTTP " + code + " for: " + url);
+            if (code == 404 || code == 405) continue;
+
+            // Got a real response — log the schema
+            trace("[Probe] === mapsearch2 response (status " + code + ") ===");
+            string body = req.String();
+            trace("[Probe] Raw body (first 500 chars): " + body.SubStr(0, 500));
+
+            Json::Value@ json = req.Json();
+            if (json is null) { trace("[Probe] Failed to parse JSON."); continue; }
+
+            // Find the results array
+            Json::Value@ results = null;
+            string[] topKeys = json.GetKeys();
+            trace("[Probe] Top-level keys: " + string::Join(topKeys, ", "));
+            for (uint i = 0; i < topKeys.Length; i++) {
+                if (json[topKeys[i]].GetType() == Json::Type::Array && json[topKeys[i]].Length > 0) {
+                    @results = json[topKeys[i]];
+                    trace("[Probe] Results array found under key: '" + topKeys[i] + "' (" + results.Length + " entries)");
+                    break;
+                }
+            }
+            if (results is null && json.GetType() == Json::Type::Array && json.Length > 0) {
+                @results = json;
+                trace("[Probe] Response is a top-level array (" + results.Length + " entries)");
+            }
+
+            if (results !is null && results.Length > 0) {
+                Json::Value@ first = results[0];
+                string[] fields = first.GetKeys();
+                trace("[Probe] Fields on first result (" + fields.Length + " total): " + string::Join(fields, ", "));
+
+                // Specifically hunt for anything TOTD-related
+                bool foundTotd = false;
+                for (uint i = 0; i < fields.Length; i++) {
+                    string k = fields[i].ToLower();
+                    if (k.Contains("totd") || k.Contains("intotd") || k.Contains("totd")) {
+                        trace("[Probe] *** TOTD field found: '" + fields[i] + "' = " + Json::Write(first[fields[i]]));
+                        foundTotd = true;
+                    }
+                }
+                if (!foundTotd) trace("[Probe] No TOTD-related field found in first result.");
+
+                // Log a few key fields to confirm schema shape
+                string[] interesting = {"id", "trackid", "mapid", "uid", "mapuid", "name", "difficulty", "awards", "awardcount"};
+                for (uint i = 0; i < interesting.Length; i++) {
+                    for (uint j = 0; j < fields.Length; j++) {
+                        if (fields[j].ToLower() == interesting[i]) {
+                            trace("[Probe] Schema: '" + fields[j] + "' = " + Json::Write(first[fields[j]]));
+                        }
+                    }
+                }
+            }
+            trace("[Probe] === end mapsearch2 probe ===");
+            return; // Stop after first successful response
+        }
+        trace("[Probe] All mapsearch2 URL candidates failed or timed out.");
+    }
 }
