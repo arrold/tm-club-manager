@@ -15,10 +15,15 @@ foreach ($file in $files) {
             Write-Warning "$($file.Name):$lineNum - Found '@=' syntax. Use '@handle = @object' instead for this compiler."
             $errors++
         }
-        
-        # 2. Check for missing namespace closures (if applicable)
-        # This is a bit complex for a simple script, but we can look for basic things.
-        
+
+        # 2. Check for invalid null comparisons (== null / != null on handles)
+        # In AngelScript, these call opEquals on the object and crash if it is actually null.
+        # Use 'is null' / '!is null' instead.
+        if ($line -match "==\s*null" -or $line -match "!=\s*null") {
+            Write-Warning "$($file.Name):$lineNum - Found '== null' or '!= null'. Use 'is null' / '!is null' for handle identity checks."
+            $errors++
+        }
+
         $lineNum++
     }
 }

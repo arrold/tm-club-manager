@@ -105,6 +105,57 @@ func main() {
 		fmt.Println("[FAIL] Handle regression: TmxMap collections should use @[] handles.")
 		errors++
 	}
+	if !checkFileContains("src/Models.as", "MapInfo@[] Maps;") {
+		fmt.Println("[FAIL] Handle regression: Activity.Maps should be a handle array (MapInfo@[]). Object slicing risk!")
+		errors++
+	}
+
+	// 6. Mirrored Room Write Protection
+	// Mirrored rooms must never be written to directly — their map list is owned by the source campaign.
+	if !checkFileContains("src/Logic/TmxCuration.as", "MirrorCampaignId > 0") {
+		fmt.Println("[FAIL] TmxCuration.as: Missing mirrored room write guard. Mirrored rooms can be silently overwritten!")
+		errors++
+	}
+	if !checkFileContains("src/Tabs/CurationTab.as", "MirrorCampaignId > 0") {
+		fmt.Println("[FAIL] CurationTab.as: Mirrored rooms are not excluded from the Target Activity dropdown!")
+		errors++
+	}
+
+	// 7. Room Guardrail Thresholds
+	// These specific numbers define Red/Yellow warning bands. They must not drift.
+	if !checkFileContains("src/Logic/TmxCuration.as", "DisplayCost > 12000") {
+		fmt.Println("[FAIL] TmxCuration.as: Red guardrail threshold (DisplayCost > 12000) is missing or changed.")
+		errors++
+	}
+	if !checkFileContains("src/Logic/TmxCuration.as", "EmbeddedItemsSize > 4000000") {
+		fmt.Println("[FAIL] TmxCuration.as: Red guardrail threshold (EmbeddedItemsSize > 4000000) is missing or changed.")
+		errors++
+	}
+
+	// 8. Activity Capacity Limits
+	// Nadeo hard limits: 25 maps for campaigns, 100 maps for rooms.
+	if !checkFileContains("src/Logic/TmxCuration.as", "toAdd.Length > 25") {
+		fmt.Println("[FAIL] TmxCuration.as: Campaign capacity limit check (25) is missing.")
+		errors++
+	}
+	if !checkFileContains("src/Logic/TmxCuration.as", "toAdd.Length > 100") {
+		fmt.Println("[FAIL] TmxCuration.as: Room capacity limit check (100) is missing.")
+		errors++
+	}
+
+	// 9. Denylist Integration in FilterTmxResults
+	// If this call is removed, maps on the denylist silently reappear in all search results.
+	if !checkFileContains("src/Logic/TmxCuration.as", "Denylist::IsExcluded(m.Uid)") {
+		fmt.Println("[FAIL] TmxCuration.as: Denylist check missing from FilterTmxResults. Excluded maps will appear in search results!")
+		errors++
+	}
+
+	// 10. Tag Cycle UI (None -> Include -> Exclude -> None)
+	// This three-state cycle is unique to this plugin and explicitly documented as fragile.
+	if !checkFileContains("src/Tabs/CurationTab.as", "Click: Include > Exclude > None") {
+		fmt.Println("[FAIL] CurationTab.as: Tag cycle header label missing. The three-state tag logic may have been broken.")
+		errors++
+	}
 
 	if errors == 0 {
 		fmt.Println("--- [TM Club Manager] ALL INTEGRITY CHECKS PASSED ---")
