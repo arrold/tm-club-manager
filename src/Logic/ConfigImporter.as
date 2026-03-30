@@ -234,6 +234,12 @@ namespace ConfigImporter {
                     
                     Log("Successfully created " + type + " '" + name + "' with ID: " + actId);
 
+                    // Nadeo API bug: campaigns are always created inactive despite the active flag.
+                    // Apply a follow-up status call to correct this.
+                    if (type == "campaign" && active) {
+                        API::SetActivityStatus(clubId, actId, true);
+                    }
+
                     // Add newly created activity to existing list so siblings can mirror it!
                     Activity@ newAct = Activity(activityJson);
                     newAct.FolderId = folderId;
