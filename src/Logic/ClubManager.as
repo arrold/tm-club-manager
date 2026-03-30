@@ -735,19 +735,30 @@ void DoBulkAudit() {
             else if (items[i].Type == "room") roomUpdates++;
         }
     }
-    
-    string summary = "";
-    if (campaignUpdates > 0) summary += campaignUpdates + " Campaign" + (campaignUpdates > 1 ? "s" : "");
-    if (roomUpdates > 0) {
-        if (summary != "") summary += ", ";
-        summary += roomUpdates + " Room" + (roomUpdates > 1 ? "s" : "");
-    }
-    
+
     State::bulkAuditUpdatesAvailable = campaignUpdates + roomUpdates;
     if (State::bulkAuditUpdatesAvailable == 0) {
         State::bulkAuditStatus = "Audit Complete: All subscriptions are up to date.";
+    } else if (State::bulkAuditUpdatesAvailable == 1) {
+        // Single activity changed — name it and describe the change inline
+        for (uint i = 0; i < items.Length; i++) {
+            if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
+                string changeDesc = "";
+                if (items[i].AuditAdded.Length > 0) changeDesc += "+" + items[i].AuditAdded.Length;
+                if (items[i].AuditRemoved.Length > 0) { if (changeDesc != "") changeDesc += " "; changeDesc += "-" + items[i].AuditRemoved.Length; }
+                if (items[i].AuditOrderMismatch) { if (changeDesc != "") changeDesc += " "; changeDesc += "reorder"; }
+                State::bulkAuditStatus = "Audit Complete: " + items[i].Name + " (" + changeDesc + ")";
+                break;
+            }
+        }
     } else {
-        State::bulkAuditStatus = "Audit Complete: " + summary + " out of sync.";
+        string summary = "";
+        if (campaignUpdates > 0) summary += campaignUpdates + " Campaign" + (campaignUpdates > 1 ? "s" : "");
+        if (roomUpdates > 0) {
+            if (summary != "") summary += ", ";
+            summary += roomUpdates + " Room" + (roomUpdates > 1 ? "s" : "");
+        }
+        State::bulkAuditStatus = "Audit Complete: " + summary + " out of sync. See details below.";
     }
     
     State::bulkAuditProgress = 1.0f;

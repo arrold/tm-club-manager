@@ -54,16 +54,22 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
             break;
         }
 
-        if (batch.Length > 0) {
+        if (batch.Length > 0 && int(batch.Length) == fetchedCount) {
+            // No client-side filtering occurred — safe to use cursor (avoids large-offset instability in TMX V1)
             lastId = batch[batch.Length - 1].TrackId;
             offset = 0;
         } else {
+            // Client-side filtering removed some maps (denylist / difficulty override).
+            // The TMX &after= parameter means MapId > X, not a positional cursor. Using
+            // the last valid map's TrackId as the cursor would skip valid replacements that
+            // have a lower MapId (older high-award maps). Advance by raw count via offset instead.
             offset += fetchedCount;
+            lastId = 0;
         }
-        
+
         yield();
     }
-    
+
     // Slice only the requested
     TmxMap@[] pageResults;
     uint startIdx = skipCount;
@@ -217,6 +223,7 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
         if (Denylist::IsExcluded(m.Uid)) continue;
+        if (f.InTOTD == 0 && m.InTotd) continue; // Client-side TOTD filter (avoids expensive server anti-join)
 
         // Author filter (handles collaborations and tags)
         if (f.AuthorNames.Length > 0) {
