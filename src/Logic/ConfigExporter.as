@@ -46,6 +46,7 @@ namespace ConfigExporter {
     Json::Value@ ExportFolder(Activity@ f, Activity@[]@ all) {
         Json::Value@ json = Json::Object();
         json["name"] = f.Name;
+        json["position"] = int(f.Position);
         json["active"] = f.Active;
         json["featured"] = f.Featured;
         json["public"] = f.Public;
@@ -68,6 +69,7 @@ namespace ConfigExporter {
         Json::Value@ json = Json::Object();
         json["name"] = a.Name;
         json["type"] = a.Type;
+        json["position"] = int(a.Position);
         json["active"] = a.Active;
         json["featured"] = a.Featured;
         json["public"] = a.Public;

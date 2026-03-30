@@ -188,6 +188,16 @@ namespace ConfigImporter {
             return;
         }
 
+        // Position: set if specified in config and differs from current.
+        if (json.HasKey("position")) {
+            uint desiredPos = JsonGetUint(json, "position");
+            uint currentPos = (folder !is null) ? folder.Position : 999;
+            if (currentPos != desiredPos) {
+                Log((dryRun ? "[Dry Run] " : "") + "Setting position of folder '" + name + "' to " + desiredPos);
+                if (!dryRun) API::SetActivityPosition(clubId, folderId, desiredPos);
+            }
+        }
+
         if (json.HasKey("activities") && json["activities"].GetType() == Json::Type::Array) {
             Json::Value@ items = json["activities"];
             // Pass 1: Campaigns first
@@ -234,19 +244,20 @@ namespace ConfigImporter {
                     
                     Log("Successfully created " + type + " '" + name + "' with ID: " + actId);
 
-                    // Nadeo API bug: campaigns are always created inactive despite the active flag.
-                    // Apply a follow-up status call to correct this.
-                    if (type == "campaign" && active) {
-                        API::SetActivityStatus(clubId, actId, true);
-                    }
-
                     // Add newly created activity to existing list so siblings can mirror it!
                     Activity@ newAct = Activity(activityJson);
                     newAct.FolderId = folderId;
                     existing.InsertLast(newAct);
-                    
+
                     // Sync metadata for new activities too (News body/headline)
                     SyncActivityMetadata(newAct, json, clubId);
+
+                    // Nadeo API bug: campaigns are always created inactive regardless of the active flag.
+                    // Called AFTER SyncActivityMetadata so the metadata edit call cannot overwrite it.
+                    if (type == "campaign" && active) {
+                        Log("Activating '" + name + "' (Nadeo API bug workaround)");
+                        API::SetActivityStatus(clubId, actId, true);
+                    }
                 } else {
                     Log("CRITICAL ERROR: Failed to create " + type + " '" + name + "'. Response was null or invalid.", LogType::Error);
                     currentDelta.Errors++;
@@ -301,6 +312,16 @@ namespace ConfigImporter {
 
         if (actId > 0 && json.HasKey("subscription")) {
             ApplySubscription(actId, name, json["subscription"], act, clubId);
+        }
+
+        // Position: set if specified in config and differs from current.
+        if (actId > 0 && json.HasKey("position")) {
+            uint desiredPos = JsonGetUint(json, "position");
+            uint currentPos = (act !is null) ? act.Position : 999;
+            if (currentPos != desiredPos) {
+                Log((dryRun ? "[Dry Run] " : "") + "Setting position of '" + name + "' to " + desiredPos);
+                if (!dryRun) API::SetActivityPosition(clubId, actId, desiredPos);
+            }
         }
     }
 

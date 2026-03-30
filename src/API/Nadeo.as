@@ -157,6 +157,12 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
+    Json::Value@ SetActivityPosition(uint clubId, uint activityId, uint position) {
+        Json::Value@ data = Json::Object();
+        data["position"] = int(position);
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
+    }
+
     /* Campaign Endpoints */
 
     Json::Value@ GetCampaignMaps(uint clubId, uint campaignId) {
