@@ -1,37 +1,31 @@
 # Club Manager for Trackmania
 
-Club Manager is a tool designed to help you organize and manage your Trackmania Club activities (campaigns, rooms, and folders) more efficiently. 
+An [Openplanet](https://openplanet.dev) plugin for managing your Trackmania club — campaigns, rooms, folders, and the maps inside them.
 
-## Features
+> **Note:** Requires Openplanet developer mode. Remember to switch back to regular mode before playing.
 
-### Club Organization
-- **Visual Tree-View**: Manage all your club campaigns, rooms, and folders in a structured layout.
-- **Easy Management**: Quickly reorder, rename, and move activities between folders.
-- **Room Mirroring**: Create rooms that automatically link to and update from a parent campaign.
+## What it does
 
-### Map Curation & TMX Integration
-- **Advanced Search**: Find maps on [Trackmania Exchange (TMX)](https://trackmania.exchange) using filters for name, author, awards, time range, and tags.
-- **Collaborator Search**: Full support for finding maps where a mapper is an author but not the uploader.
-- **Automatic Audits**: Keep your club campaigns and rooms synced with any TMX search. See exactly what has changed and sync everything with a single click.
-- **Intelligent Category Sync**: Automatically stabilizes campaign categories during updates to prevent Nadeo API InternalServerErrors.
-- **Metadata Overrides**: Customise difficulty, tags, and map names locally without affecting the TMX source.
-- **Guardrails**: Flags maps that might exceed game limits (large file sizes or high display costs) before you add them.
-- **Subscription System**: Efficient configuration storage (saving only modified filters) to keep your club data lean.
+### Tree view of your club
+See all your club folders, campaigns, and rooms in one place. Rename things, move them around, manage maps — all without leaving the game.
 
-### Local Map Browser
-- **Direct Access**: Browse and add maps directly from your local `Documents/Trackmania/Maps/` folder without leaving the game.
+### TMX subscriptions
+"Subscribe" a campaign or room to a [Trackmania Exchange (TMX)](https://trackmania.exchange) search — filter by tags, surface, awards, upload date, author, TOTD status, and more. Then run an audit to see what's changed, and update the campaign with one click.
 
-## Developer Verification (Local)
+### Config import/export
+Export a JSON snapshot of your entire club structure. Edit it, then re-import — the plugin will create any missing folders/campaigns/rooms and reorder everything to match. Great for setting up a club from scratch or keeping multiple clubs consistent.
 
-To ensure code integrity and prevent regressions (such as broken TMX protocols or UI elements), use the Go-based verification tool:
+### Metadata overrides
+Override difficulty ratings, surface tags, and map names locally without touching the TMX source. Useful for correcting mislabelled maps in your club.
 
-1. Ensure [Go](https://go.dev/) is installed.
-2. Run the verification script:
-   ```pwsh
-   go run scripts/verify.go
-   ```
-3. The script will verify TMX author flags, syntax consistency, and UI manifest presence.
+### Custom lists
+Create your own curated lists of maps and subscribe campaigns or rooms to them — handy for collections that don't come from a TMX search.
+
+### Local map browser
+Browse maps from your local `Documents/Trackmania/Maps/` folder and add them to campaigns directly.
+
+### Room mirroring
+Link a room to a campaign so it always shows the same maps.
 
 ---
 *Developed by Arrold*
-
