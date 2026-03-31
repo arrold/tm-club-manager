@@ -138,18 +138,13 @@ class CurationTab : Tab {
 
         // Row 5: Upload date range + rolling window preset
         {
-            const string[] RELATIVE_LABELS = { "Off", "7 days", "14 days", "30 days", "90 days", "365 days" };
-            const int[]    RELATIVE_VALUES = { 0, 7, 14, 30, 90, 365 };
+            const string[] RELATIVE_LABELS = { "7d", "14d", "30d", "90d", "365d" };
+            const int[]    RELATIVE_VALUES = { 7, 14, 30, 90, 365 };
 
-            // Find the combo index that matches the current RelativeDays value.
-            int relIdx = 0;
-            for (uint i = 1; i < RELATIVE_VALUES.Length; i++) {
-                if (f.RelativeDays == RELATIVE_VALUES[i]) { relIdx = i; break; }
-            }
+            bool rollingActive = f.RelativeDays > 0;
 
             UI::BeginGroup();
             UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
-            bool rollingActive = f.RelativeDays > 0;
             if (rollingActive) UI::BeginDisabled();
             UI::PushItemWidth(120);
             f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
@@ -161,13 +156,19 @@ class CurationTab : Tab {
             UI::SameLine(0, 20);
 
             UI::BeginGroup();
-            UI::TextDisabled("Last");
-            UI::PushItemWidth(90);
-            int newIdx = UI::Combo("##reldays", relIdx, RELATIVE_LABELS);
-            UI::PopItemWidth();
-            if (newIdx != relIdx) {
-                f.RelativeDays = RELATIVE_VALUES[newIdx];
-                if (f.RelativeDays > 0) f.UploadedFrom = ""; // clear fixed date when rolling is active
+            UI::TextDisabled("Last:");
+            for (uint i = 0; i < RELATIVE_VALUES.Length; i++) {
+                if (i > 0) UI::SameLine();
+                bool active = f.RelativeDays == RELATIVE_VALUES[i];
+                if (active) {
+                    UI::PushStyleColor(UI::Col::Button, vec4(0.2f, 0.6f, 0.2f, 0.8f));
+                    UI::PushStyleColor(UI::Col::ButtonHovered, vec4(0.2f, 0.6f, 0.2f, 1.0f));
+                }
+                if (UI::Button(RELATIVE_LABELS[i] + "##rel")) {
+                    f.RelativeDays = active ? 0 : RELATIVE_VALUES[i];
+                    if (f.RelativeDays > 0) f.UploadedFrom = "";
+                }
+                if (active) UI::PopStyleColor(2);
             }
             UI::EndGroup();
         }
