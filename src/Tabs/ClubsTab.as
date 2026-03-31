@@ -589,7 +589,9 @@ class ClubsTab : Tab {
                     for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
                     if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
 
-                    if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "") 
+                    if (sub.Filters.RelativeDays > 0)
+                        UI::TextDisabled("Uploaded: last " + sub.Filters.RelativeDays + " days (rolling)");
+                    else if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "")
                         UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
                     
                     if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)

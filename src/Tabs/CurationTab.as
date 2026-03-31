@@ -136,17 +136,44 @@ class CurationTab : Tab {
 
         UI::Separator();
 
-        // Row 5: Advanced Ranges (Date & Time)
-        UI::BeginGroup();
-        UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
-        UI::PushItemWidth(120);
-        f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
-        f.UploadedTo = UI::InputText("To##up_t", f.UploadedTo);
-        UI::PopItemWidth();
-        UI::EndGroup();
+        // Row 5: Upload date range + rolling window preset
+        {
+            const string[] RELATIVE_LABELS = { "7d", "14d", "30d", "90d", "365d" };
+            const int[]    RELATIVE_VALUES = { 7, 14, 30, 90, 365 };
 
-        UI::SameLine(0, 40);
+            bool rollingActive = f.RelativeDays > 0;
 
+            UI::BeginGroup();
+            UI::TextDisabled("Uploaded Date Range (DD/MM/YYYY)");
+            if (rollingActive) UI::BeginDisabled();
+            UI::PushItemWidth(120);
+            f.UploadedFrom = UI::InputText("From##up_f", f.UploadedFrom); UI::SameLine();
+            f.UploadedTo   = UI::InputText("To##up_t",   f.UploadedTo);
+            UI::PopItemWidth();
+            if (rollingActive) UI::EndDisabled();
+            UI::EndGroup();
+
+            UI::SameLine(0, 20);
+
+            UI::BeginGroup();
+            UI::TextDisabled("Last:");
+            for (uint i = 0; i < RELATIVE_VALUES.Length; i++) {
+                if (i > 0) UI::SameLine();
+                bool active = f.RelativeDays == RELATIVE_VALUES[i];
+                if (active) {
+                    UI::PushStyleColor(UI::Col::Button, vec4(0.2f, 0.6f, 0.2f, 0.8f));
+                    UI::PushStyleColor(UI::Col::ButtonHovered, vec4(0.2f, 0.6f, 0.2f, 1.0f));
+                }
+                if (UI::Button(RELATIVE_LABELS[i] + "##rel")) {
+                    f.RelativeDays = active ? 0 : RELATIVE_VALUES[i];
+                    if (f.RelativeDays > 0) f.UploadedFrom = "";
+                }
+                if (active) UI::PopStyleColor(2);
+            }
+            UI::EndGroup();
+        }
+
+        // Row 6: Author time range
         UI::BeginGroup();
         UI::TextDisabled("Author Time Range (HH:MM:SS)");
         UI::PushItemWidth(45);
@@ -318,6 +345,7 @@ class CurationTab : Tab {
                 sub.ActivityId = State::TargetActivity.Id;
                 sub.ActivityName = State::TargetActivity.Name;
                 @sub.Filters = f.Clone();
+                sub.MapLimit = f.ResultLimit;
                 Subscriptions::Add(sub);
 
                 UI::ShowNotification("Club Manager", "Subscription saved for " + State::TargetActivity.Name);

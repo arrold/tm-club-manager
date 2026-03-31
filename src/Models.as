@@ -417,6 +417,7 @@ class TmxSearchFilters {
     uint ResultLimit = 25;
     uint DisplayCostLimit = 10000;
     uint ItemSizeLimit = 1000000;
+    int RelativeDays = 0; // 0 = disabled; >0 = uploadedafter = today minus N days (rolling window)
 
     TmxSearchFilters() {}
 
@@ -562,6 +563,7 @@ class TmxSearchFilters {
         
         LimitFilter = JsonGetInt(json, "LimitFilter", 0);
         CurrentPage = JsonGetInt(json, "CurrentPage", 1);
+        RelativeDays = JsonGetInt(json, "RelativeDays", 0);
 
         hFrom = (TimeFromMs / 3600000);
         mFrom = (TimeFromMs % 3600000) / 60000;
@@ -604,7 +606,9 @@ class TmxSearchFilters {
             json["AuthorTimeRange"] = range;
         }
 
-        if (UploadedFrom != "" || UploadedTo != "") {
+        if (RelativeDays > 0) {
+            json["RelativeDays"] = RelativeDays;
+        } else if (UploadedFrom != "" || UploadedTo != "") {
             Json::Value@ range = Json::Object();
             range["From"] = UploadedFrom;
             range["To"] = UploadedTo;
@@ -651,6 +655,7 @@ class TmxSearchFilters {
         other.hTo = hTo; other.mTo = mTo; other.sTo = sTo;
         other.UploadedFrom = UploadedFrom;
         other.UploadedTo = UploadedTo;
+        other.RelativeDays = RelativeDays;
         other.SortPrimary = SortPrimary;
         other.SortSecondary = SortSecondary;
         other.InTOTD = InTOTD;
@@ -699,7 +704,8 @@ class TmxSearchFilters {
         if (TimeToMs != def.TimeToMs) json["TimeToMs"] = TimeToMs;
         if (UploadedFrom != def.UploadedFrom) json["UploadedFrom"] = UploadedFrom;
         if (UploadedTo != def.UploadedTo) json["UploadedTo"] = UploadedTo;
-        
+        if (RelativeDays != def.RelativeDays) json["RelativeDays"] = RelativeDays;
+
         if (SortPrimary != def.SortPrimary) {
             if (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) {
                 json["SortPrimary"] = TMX::SORT_NAMES[SortPrimary];
@@ -763,6 +769,7 @@ class TmxSearchFilters {
         if (TimeToMs != other.TimeToMs) diff += "TimeTo: " + TimeToMs + " != " + other.TimeToMs + ", ";
         if (UploadedFrom != other.UploadedFrom) diff += "UploadedFrom: " + UploadedFrom + " != " + other.UploadedFrom + ", ";
         if (UploadedTo != other.UploadedTo) diff += "UploadedTo: " + UploadedTo + " != " + other.UploadedTo + ", ";
+        if (RelativeDays != other.RelativeDays) diff += "RelativeDays: " + RelativeDays + " != " + other.RelativeDays + ", ";
         if (SortPrimary != other.SortPrimary) {
             string p1 = (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(SortPrimary)] : "Unknown";
             string p2 = (other.SortPrimary >= 0 && uint(other.SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(other.SortPrimary)] : "Unknown";
