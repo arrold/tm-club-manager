@@ -91,6 +91,15 @@ namespace TMX {
         return parts[2] + "-" + parts[1] + "-" + parts[0];
     }
 
+    // Returns a YYYY-MM-DD string for N days before today (UTC), used for rolling upload windows.
+    string DateDaysAgo(int days) {
+        int64 ts = Time::Stamp - int64(days) * 86400;
+        Time::Info t = Time::ParseUTC(ts);
+        string m = (t.Month < 10 ? "0" : "") + t.Month;
+        string d = (t.Day   < 10 ? "0" : "") + t.Day;
+        return t.Year + "-" + m + "-" + d;
+    }
+
 /*
  * Advanced TMX Search:
  * Maps the complex TmxSearchFilters into a string of URL parameters for the TMX API.
@@ -148,7 +157,7 @@ namespace TMX {
             if (tid > 0) params += "&etag=" + tostring(tid);
         }
 
-        string dFrom = FormatDate(f.UploadedFrom);
+        string dFrom = (f.RelativeDays > 0) ? DateDaysAgo(f.RelativeDays) : FormatDate(f.UploadedFrom);
         string dTo = FormatDate(f.UploadedTo);
         if (dFrom != "") params += "&uploadedafter=" + Net::UrlEncode(dFrom);
         if (dTo != "") params += "&uploadedbefore=" + Net::UrlEncode(dTo);
