@@ -6,14 +6,14 @@ void RefreshClubs() {
     State::lastClubRefresh = Time::Now;
 
     // trace("Refreshing clubs...");
-    Club[] items;
+    Club@[] items;
 
     Json::Value@ resp = API::GetMyClubs(100, 0);
     if (resp !is null && resp.HasKey("clubList")) {
         Json::Value@ list = resp["clubList"];
         // trace("Raw API Result: " + list.Length + " clubs found.");
         for (uint i = 0; i < list.Length; i++) {
-            Club c(list[i]);
+            Club@ c = Club(list[i]);
             if (c.Id != 0) items.InsertLast(c);
         }
     } else {
@@ -31,7 +31,7 @@ void RefreshActivities() {
     uint clubId = State::SelectedClub.Id;
     
     // trace("Refreshing activities for club " + clubId);
-    Activity[] items;
+    Activity@[] items;
     FetchActivitiesForStatus(clubId, true, items);
     
     string role = State::SelectedClub.Role.ToUpper();
@@ -56,7 +56,7 @@ void RefreshActiveActivities() {
     State::isInitialised = true;
     
     uint[] toFetch;
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     for (uint i = 0; i < items.Length; i++) {
         Activity@ a = items[i];
         if (a.Type == "folder" || a.Type == "news") continue;
@@ -103,19 +103,21 @@ void RunEagerMetadataFetch(ref@ r) {
     }
 }
 
-void FetchActivitiesForStatus(uint clubId, bool active, Activity[]@ items) {
+void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
     Json::Value@ resp = API::GetClubActivities(clubId, active, 100, 0);
     if (resp !is null && resp.HasKey("activityList")) {
         Json::Value@ list = resp["activityList"];
         for (uint i = 0; i < list.Length; i++) {
-            Activity a(list[i]);
+            if (list[i].GetType() != Json::Type::Object) {
+                continue;
+            }
+            Activity@ a = Activity(list[i]);
             
             // Re-use existing activity handle if it has unsaved changes
             Activity@ toAdd = a;
             for (uint j = 0; j < State::ClubActivities.Length; j++) {
                 if (State::ClubActivities[j].Id == a.Id && State::ClubActivities[j].HasMapChanges) {
                     @toAdd = State::ClubActivities[j];
-                    // trace("Preserving buffered activity: " + toAdd.Name);
                     break;
                 }
             }
@@ -246,17 +248,29 @@ void DoToggleActivityFeatured(ref@ r) {
 void LoadActivityDetails(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
-    Json::Value@ resp = API::GetClubActivity(State::SelectedClub.Id, a.Id);
-    if (resp !is null) {
-        a.Description = resp.HasKey("description") ? string(resp["description"]) : "";
+    a.Failed = false;
+    Json::Value@ resp = (a.Type == "news") ? API::GetClubNews(State::SelectedClub.Id, a.Id) : API::GetClubActivity(State::SelectedClub.Id, a.Id);
+    if (resp !is null && resp.GetType() == Json::Type::Object) {
+        Json::Value@ details = resp.HasKey("news") ? resp["news"] : resp;
+        if (a.Type == "news") {
+            a.Headline = JsonGetString(details, "headline", a.Name).Replace("|ClubActivity|", "");
+            a.Body = JsonGetString(details, "body", "").Replace("|ClubActivity|", "");
+        } else {
+            a.Body = JsonGetString(details, "description", "");
+        }
         a.NewsLoaded = true;
+    } else {
+        a.Failed = true;
+        warn("Failed to load activity details for " + a.Id + " (Type: " + a.Type + ")");
     }
+    a.LoadingMaps = false;
 }
 
 void LoadActivityMaps(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     
+    a.Failed = false;
     a.LoadingMaps = true;
     if (a.HasMapChanges) {
         // trace("LoadActivityMaps: " + a.Name + " has unsaved changes, skipping reload.");
@@ -271,7 +285,7 @@ void LoadActivityMaps(ref@ r) {
     if (a.Type == "campaign") {
         Json::Value@ json = API::GetCampaignMaps(clubId, a.CampaignId);
         // trace("GetCampaignMaps(" + a.CampaignId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
-        if (json !is null) {
+        if (json !is null && json.GetType() == Json::Type::Object) {
             a.CampaignId = JsonGetUint(json, "campaignId", a.CampaignId);
             a.Name = Text::StripFormatCodes(JsonGetString(json, "name", a.Name));
             // Check top level, then check inside "campaign" object
@@ -287,11 +301,13 @@ void LoadActivityMaps(ref@ r) {
                     }
                 }
             }
+        } else {
+            a.Failed = true;
         }
     } else if (a.Type == "room") {
         Json::Value@ json = API::GetClubRoom(clubId, a.RoomId);
         // trace("GetClubRoom(" + a.RoomId + ") raw response: " + (json is null ? "null" : Json::Write(json)));
-        if (json !is null) {
+        if (json !is null && json.GetType() == Json::Type::Object) {
             // Check if this room is mirroring a campaign
             uint campaignId = 0;
             if (json.HasKey("campaignId") && json["campaignId"].GetType() == Json::Type::Number) {
@@ -300,6 +316,7 @@ void LoadActivityMaps(ref@ r) {
                 campaignId = uint(json["room"]["campaignId"]);
             }
             a.CampaignId = campaignId; // Update so SEVER button shows up
+            a.MirrorCampaignId = campaignId; // Unify with UI/Importer monitoring
             
             Json::Value@ list = null;
             if (campaignId > 0) {
@@ -336,6 +353,8 @@ void LoadActivityMaps(ref@ r) {
                     if (uid != "" && !uid.Contains(":error-")) uids.InsertLast(uid);
                 }
             }
+        } else {
+            a.Failed = true;
         }
     }
 
@@ -358,14 +377,16 @@ void LoadActivityMaps(ref@ r) {
 
                 if (list !is null) {
                     for (uint k = 0; k < list.Length; k++) {
-                        a.Maps.InsertLast(MapInfo(list[k]));
+                        MapInfo@ mi = MapInfo(list[k]);
+                        a.Maps.InsertLast(mi);
+                        AuditCache::Register(mi);
                     }
                 }
             }
         }
 
         // Important: API might return maps in different order. Reorder a.Maps to match 'uids' array.
-        MapInfo[] ordered;
+        MapInfo@[] ordered;
         for (uint i = 0; i < uids.Length; i++) {
             for (uint j = 0; j < a.Maps.Length; j++) {
                 if (a.Maps[j].Uid == uids[i]) {
@@ -446,10 +467,10 @@ void DoSaveNews(ref@ r) {
     Activity@ a = cast<Activity>(r);
     if (a is null || State::SelectedClub is null) return;
     Json::Value@ s = Json::Object();
-    s["name"] = a.Headline;
-    s["description"] = a.Body;
-    API::EditClubActivity(State::SelectedClub.Id, a.Id, s);
-    Notify("News updated.");
+    s["headline"] = "|ClubActivity|" + a.Headline;
+    s["body"] = "|ClubActivity|" + a.Body;
+    API::EditClubNews(State::SelectedClub.Id, a.Id, s);
+    Notify("News content updated.");
 }
 
 void DoUpdateBranding(ref@ r) {
@@ -483,18 +504,31 @@ void DoAuditSubscription(ref@ r) {
     a.AuditOrderMismatch = false;
     
     Notify("Auditing subscription for " + a.Name + "...");
-    // trace("Audit filters for " + a.Name + ": Name=" + sub.Filters.MapName + ", Author=" + sub.Filters.AuthorName + ", TOTD=" + sub.Filters.InTOTD + ", Page=" + sub.Filters.CurrentPage + ", Limit=" + sub.MapLimit);
     
-    // Audits should respect the page stored in the subscription filters.
-    TmxMap[] results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
+    TmxMap@[] results;
+    if (sub.SourceType == 1) { // Local List
+        TmxMap@[] allMaps = CustomLists::GetMaps(sub.ListId);
+        // Apply Denylist for local lists too
+        TmxMap@[] filtered;
+        for (uint i = 0; i < allMaps.Length; i++) {
+            if (!Denylist::IsExcluded(allMaps[i].Uid)) filtered.InsertLast(allMaps[i]);
+            if (filtered.Length >= sub.MapLimit) break;
+        }
+        results = filtered;
+    } else { // TMX Search
+        // Denylist is handled inside FetchMapsSequential -> FilterTmxResults
+        results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
+    }
+
     if (results.Length == 0) {
-        Notify("Audit failed: No maps found on TMX.");
+        Notify("Audit failed: No maps found in source (" + (sub.SourceType == 1 ? "Local List: " + sub.ListId : "TMX Search") + ").");
         a.IsAuditing = false;
         return;
     }
     
     // Calculate Diff
     for (uint i = 0; i < results.Length; i++) {
+        if (i % 20 == 0) yield();
         bool found = false;
         for (uint j = 0; j < a.Maps.Length; j++) {
             if (a.Maps[j].Uid == results[i].Uid) { found = true; break; }
@@ -503,6 +537,7 @@ void DoAuditSubscription(ref@ r) {
     }
     
     for (uint i = 0; i < a.Maps.Length; i++) {
+        if (i % 20 == 0) yield();
         bool found = false;
         for (uint j = 0; j < results.Length; j++) {
             if (results[j].Uid == a.Maps[i].Uid) { found = true; break; }
@@ -543,6 +578,7 @@ void DoApplyAudit(ref@ r) {
     
     string[] newUids;
     for (uint i = 0; i < a.AuditFullUidList.Length; i++) {
+        if (i % 10 == 0) yield();
         string uid = a.AuditFullUidList[i];
         if (!Nadeo::IsMapUploaded(uid)) {
             Nadeo::RegisterMap(uid);
@@ -661,7 +697,7 @@ void DoBulkAudit() {
     State::bulkAuditUpdatesAvailable = 0;
     State::bulkAuditProgress = 0.0f;
     
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     uint total = 0;
     for (uint i = 0; i < items.Length; i++) {
         if (Subscriptions::GetByActivity(items[i].Id) !is null) total++;
@@ -699,19 +735,30 @@ void DoBulkAudit() {
             else if (items[i].Type == "room") roomUpdates++;
         }
     }
-    
-    string summary = "";
-    if (campaignUpdates > 0) summary += campaignUpdates + " Campaign" + (campaignUpdates > 1 ? "s" : "");
-    if (roomUpdates > 0) {
-        if (summary != "") summary += ", ";
-        summary += roomUpdates + " Room" + (roomUpdates > 1 ? "s" : "");
-    }
-    
+
     State::bulkAuditUpdatesAvailable = campaignUpdates + roomUpdates;
     if (State::bulkAuditUpdatesAvailable == 0) {
         State::bulkAuditStatus = "Audit Complete: All subscriptions are up to date.";
+    } else if (State::bulkAuditUpdatesAvailable == 1) {
+        // Single activity changed — name it and describe the change inline
+        for (uint i = 0; i < items.Length; i++) {
+            if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
+                string changeDesc = "";
+                if (items[i].AuditAdded.Length > 0) changeDesc += "+" + items[i].AuditAdded.Length;
+                if (items[i].AuditRemoved.Length > 0) { if (changeDesc != "") changeDesc += " "; changeDesc += "-" + items[i].AuditRemoved.Length; }
+                if (items[i].AuditOrderMismatch) { if (changeDesc != "") changeDesc += " "; changeDesc += "reorder"; }
+                State::bulkAuditStatus = "Audit Complete: " + items[i].Name + " (" + changeDesc + ")";
+                break;
+            }
+        }
     } else {
-        State::bulkAuditStatus = "Audit Complete: " + summary + " out of sync.";
+        string summary = "";
+        if (campaignUpdates > 0) summary += campaignUpdates + " Campaign" + (campaignUpdates > 1 ? "s" : "");
+        if (roomUpdates > 0) {
+            if (summary != "") summary += ", ";
+            summary += roomUpdates + " Room" + (roomUpdates > 1 ? "s" : "");
+        }
+        State::bulkAuditStatus = "Audit Complete: " + summary + " out of sync. See details below.";
     }
     
     State::bulkAuditProgress = 1.0f;
@@ -724,7 +771,7 @@ void DoBulkApply() {
     State::bulkAuditInProgress = true;
     State::bulkAuditProgress = 0.0f;
     
-    Activity[]@ items = State::ClubActivities;
+    Activity@[]@ items = State::ClubActivities;
     uint total = 0;
     for (uint i = 0; i < items.Length; i++) {
         if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {

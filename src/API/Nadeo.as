@@ -81,6 +81,10 @@ namespace API {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId);
     }
 
+    Json::Value@ GetClubNews(uint clubId, uint newsId) {
+        return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/news/" + newsId);
+    }
+
     Json::Value@ GetClubDetails(uint clubId) {
         return FetchLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId);
     }
@@ -125,6 +129,10 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
+    Json::Value@ EditClubNews(uint clubId, uint newsId, Json::Value@ data) {
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/news/" + newsId + "/edit", data);
+    }
+
     Json::Value@ MoveActivity(uint clubId, uint activityId, uint newFolderId) {
         Json::Value@ data = Json::Object();
         data["folderId"] = newFolderId;
@@ -149,6 +157,12 @@ namespace API {
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
     }
 
+    Json::Value@ SetActivityPosition(uint clubId, uint activityId, uint position) {
+        Json::Value@ data = Json::Object();
+        data["position"] = int(position);
+        return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/activity/" + activityId + "/edit", data);
+    }
+
     /* Campaign Endpoints */
 
     Json::Value@ GetCampaignMaps(uint clubId, uint campaignId) {
@@ -156,50 +170,41 @@ namespace API {
     }
 
     Json::Value@ SetCampaignMaps(uint clubId, uint campaignId, const string &in campaignName, string[]@ mapUids, Json::Value@ current = null) {
+        // Start from current state if available, otherwise a fresh object
+        Json::Value@ data = (current !is null && current.GetType() == Json::Type::Object) ? current : Json::Object();
+        
+        // Core properties
+        data["name"] = campaignName;
+        data["public"] = true;
+        data["published"] = true;
+        
+        // Rebuild Playlist
         Json::Value@ playlist = Json::Array();
         for (uint i = 0; i < mapUids.Length; i++) {
             Json::Value@ entry = Json::Object();
-            entry["position"] = i;
+            entry["position"] = int(i);
             entry["mapUid"] = mapUids[i];
             playlist.Add(entry);
         }
-
-        Json::Value@ cats = null;
-        if (current !is null) {
-            if (current.HasKey("categories") && current["categories"].GetType() == Json::Type::Array) {
-                @cats = current["categories"];
-            } else if (current.HasKey("campaign") && current["campaign"].HasKey("categories") && current["campaign"]["categories"].GetType() == Json::Type::Array) {
-                @cats = current["campaign"]["categories"];
-            }
-        }
-
-        Json::Value@ data = Json::Object();
-        data["name"] = campaignName;
         data["playlist"] = playlist;
-        data["published"] = true;
+        
+        // Flatten Categories into a single category matching the playlist length.
+        // This is the "Safe Category Sync" core logic.
+        Json::Value@ newCats = Json::Array();
+        Json::Value@ c = Json::Object();
+        c["name"] = campaignName;
+        c["position"] = 0;
+        c["length"] = int(mapUids.Length);
+        newCats.Add(c);
+        data["categories"] = newCats;
 
-        if (cats !is null && cats.Length > 0) {
-            Json::Value@ newCats = Json::Array();
-            for (uint i = 0; i < cats.Length; i++) {
-                Json::Value@ c = Json::Object();
-                c["name"] = cats[i]["name"];
-                c["position"] = cats[i]["position"];
-                c["length"] = (cats.Length == 1) ? int(mapUids.Length) : int(cats[i]["length"]);
-                newCats.Add(c);
-            }
-            data["categories"] = newCats;
-        } else {
-            // Fallback for new campaigns or missing category data
-            Json::Value@ c = Json::Object();
-            c["name"] = campaignName;
-            c["position"] = 0;
-            c["length"] = int(mapUids.Length);
-            Json::Value@ newCats = Json::Array();
-            newCats.Add(c);
-            data["categories"] = newCats;
+        // Sanitization: Remove read-only or ID fields that can cause InternalServerError on re-post
+        string[] toRemove = {"id", "campaignId", "clubId", "creatorId", "creationDate", "activityId"};
+        for (uint i = 0; i < toRemove.Length; i++) {
+            if (data.HasKey(toRemove[i])) data.Remove(toRemove[i]);
         }
 
-        // trace("SetCampaignMaps: Updating campaign " + campaignId + " with " + mapUids.Length + " maps. UIDs: " + string::Join(mapUids, ", "));
+        trace("SetCampaignMaps: Updating campaign " + campaignId + " (" + campaignName + ") with " + mapUids.Length + " maps.");
         return PostLiveEndpoint(NadeoServices::BaseURLLive() + "/api/token/club/" + clubId + "/campaign/" + campaignId + "/edit", data);
     }
 

@@ -35,7 +35,20 @@ class CurationTab : Tab {
         UI::PushItemWidth(150);
         f.MapName = UI::InputText("Map Name", f.MapName);
         UI::SameLine();
-        f.AuthorName = UI::InputText("Author", f.AuthorName);
+        
+        string authorBuffer = string::Join(f.AuthorNames, ", ");
+        string newAuthorBuffer = UI::InputText("Author(s)", authorBuffer);
+        if (UI::IsItemHovered()) UI::SetTooltip("Use comma-separated names for multi-author search\nExample: hf.Zertrov, simon.tm");
+        
+        if (newAuthorBuffer != authorBuffer) {
+            f.AuthorNames.RemoveRange(0, f.AuthorNames.Length);
+            string[] split = newAuthorBuffer.Split(",");
+            for (uint i = 0; i < split.Length; i++) {
+                string s = split[i].Trim();
+                if (s != "") f.AuthorNames.InsertLast(s);
+            }
+        }
+
         UI::SameLine();
         UI::PushItemWidth(100);
         f.ResultLimit = uint(UI::InputInt("Maps per Page", int(f.ResultLimit)));
@@ -152,7 +165,7 @@ class CurationTab : Tab {
             f.CurrentPage = 1;
             f.TimeFromMs = (f.hFrom * 3600000) + (f.mFrom * 60000) + (f.sFrom * 1000);
             f.TimeToMs = (f.hTo * 3600000) + (f.mTo * 60000) + (f.sTo * 1000);
-            startnew(DoTmxSearch);
+            startnew(StartFreshTmxSearch);
         }
         UI::SameLine();
         if (UI::Button(Icons::AngleLeft + " Prev")) {
@@ -171,6 +184,13 @@ class CurationTab : Tab {
         UI::SameLine();
         if (UI::Button(Icons::Trash + " Clear All Filters")) {
             State::tmxFilters = TmxSearchFilters();
+        }
+
+        // Awards Most + Not TOTD fetches 100 results upfront; subsequent pages are instant from cache.
+        if (f.SortPrimary == 0 && f.InTOTD == 0) {
+            UI::PushStyleColor(UI::Col::Text, vec4(0.6f, 0.6f, 0.6f, 1.0f));
+            UI::Text(Icons::ClockO + " 'Awards Most' + 'Not TOTD': first 100 results cached on search. Paging is instant within that set.");
+            UI::PopStyleColor();
         }
     }
 
@@ -304,11 +324,12 @@ class CurationTab : Tab {
             }
         }
 
-        if (UI::BeginTable("SearchResultTable", 10, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
+        if (UI::BeginTable("SearchResultTable", 11, UI::TableFlags::Resizable | UI::TableFlags::RowBg)) {
             UI::TableSetupColumn("Select", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("ID", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthStretch);
-            UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Uploader", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("Authors", UI::TableColumnFlags::WidthFixed, 30);
             UI::TableSetupColumn("Awards", UI::TableColumnFlags::WidthFixed, 60);
             UI::TableSetupColumn("Warn", UI::TableColumnFlags::WidthFixed, 40);
             UI::TableSetupColumn("Length", UI::TableColumnFlags::WidthFixed, 80);
@@ -326,8 +347,19 @@ class CurationTab : Tab {
                 UI::Text(tostring(m.TrackId));
                 UI::TableNextColumn();
                 UI::Text(m.Name);
+                MetadataOverrides::RenderOverrideMenu(m);
                 UI::TableNextColumn();
                 UI::Text(m.Author);
+                UI::TableNextColumn();
+                UI::Text(Icons::Users);
+                if (UI::IsItemHovered()) {
+                    UI::BeginTooltip();
+                    UI::Text("Collaborators:");
+                    for (uint j = 0; j < m.Authors.Length; j++) {
+                        UI::Text("- " + m.Authors[j]);
+                    }
+                    UI::EndTooltip();
+                }
                 UI::TableNextColumn();
                 UI::Text(tostring(m.AwardCount));
                 UI::TableNextColumn();
@@ -350,6 +382,22 @@ class CurationTab : Tab {
                 UI::TableNextColumn();
                 if (UI::Button(Icons::ExternalLink + "##tmx" + i)) {
                     OpenBrowserURL("https://trackmania.exchange/maps/" + m.TrackId);
+                }
+                UI::SameLine();
+                if (UI::Button(Icons::Plus + "##addlist" + i)) {
+                    UI::OpenPopup("AddToListPopup" + i);
+                }
+                if (UI::BeginPopup("AddToListPopup" + i)) {
+                    UI::TextDisabled("Add to Local List:");
+                    for (uint j = 0; j < State::CustomListNames.Length; j++) {
+                        if (UI::MenuItem(State::CustomListNames[j])) {
+                            CustomLists::Add(State::CustomListNames[j], m);
+                        }
+                    }
+                    if (State::CustomListNames.Length == 0) {
+                        UI::TextDisabled("(No lists found)");
+                    }
+                    UI::EndPopup();
                 }
             }
             UI::EndTable();

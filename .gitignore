@@ -8,6 +8,7 @@ Openplanet.log
 /specs/
 /.agents/
 /.vscode/
+/.claude/
 
 # Windows specifics
 Thumbs.db

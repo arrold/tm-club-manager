@@ -3,7 +3,7 @@
 // --- Safe JSON Helpers ---
 
 uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return uint(v);
     if (v.GetType() == Json::Type::String) return Text::ParseUInt(string(v));
@@ -11,7 +11,7 @@ uint JsonGetUint(Json::Value@ json, const string &in key, uint defaultValue = 0)
 }
 
 int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Number) return int(v);
     if (v.GetType() == Json::Type::String) return Text::ParseInt(string(v));
@@ -19,7 +19,7 @@ int JsonGetInt(Json::Value@ json, const string &in key, int defaultValue = 0) {
 }
 
 bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = false) {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::Boolean) return bool(v);
     if (v.GetType() == Json::Type::Number) return int(v) != 0;
@@ -31,11 +31,24 @@ bool JsonGetBool(Json::Value@ json, const string &in key, bool defaultValue = fa
 }
 
 string JsonGetString(Json::Value@ json, const string &in key, const string &in defaultValue = "") {
-    if (json is null || !json.HasKey(key)) return defaultValue;
+    if (json is null || json.GetType() != Json::Type::Object || !json.HasKey(key)) return defaultValue;
     Json::Value@ v = json[key];
     if (v.GetType() == Json::Type::String) return string(v);
     if (v.GetType() == Json::Type::Number || v.GetType() == Json::Type::Boolean) return Json::Write(v);
     return defaultValue;
+}
+
+Json::Value@ JsonDeepExtract(Json::Value@ json) {
+    if (json is null || json.GetType() != Json::Type::Object) return json;
+    
+    // If it's a wrapper for a specific resource type
+    if (json.HasKey("activity") && json["activity"].GetType() == Json::Type::Object) return json["activity"];
+    if (json.HasKey("campaign") && json["campaign"].GetType() == Json::Type::Object) return json["campaign"];
+    if (json.HasKey("room") && json["room"].GetType() == Json::Type::Object) return json["room"];
+    if (json.HasKey("news") && json["news"].GetType() == Json::Type::Object) return json["news"];
+    if (json.HasKey("folder") && json["folder"].GetType() == Json::Type::Object) return json["folder"];
+    
+    return json;
 }
 
 // --- Classes ---
@@ -49,7 +62,7 @@ class Club {
     bool Public;
     Club() {}
     Club(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         
         if (json.HasKey("id")) Id = uint(json["id"]);
         else if (json.HasKey("clubId")) Id = uint(json["clubId"]);
@@ -72,7 +85,7 @@ class MapInfo {
 
     MapInfo() {}
     MapInfo(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
         else if (json.HasKey("uid")) Uid = string(json["uid"]);
         else if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
@@ -105,7 +118,7 @@ class Activity {
     uint RoomId = 0;
     uint MirrorCampaignId = 0;
     
-    MapInfo[] Maps;
+    MapInfo@[] Maps;
 
     
     // Metadata for UI
@@ -118,23 +131,59 @@ class Activity {
     bool PendingDelete = false;
     bool IsManagingMaps = false;
     bool HasMapChanges = false;
+    bool Failed = false;
     
     // News specific
     string Headline;
     string Body;
     string Description;
+    bool DetailsLoaded = false;
+
+    void UpdateFromDetail(Json::Value@ json) {
+        if (json is null || json.GetType() != Json::Type::Object) return;
+        
+        // Detail responses are often nested under a type key (e.g. "room": {...})
+        Json::Value@ details = null;
+        if (json.HasKey("room")) @details = json["room"];
+        else if (json.HasKey("campaign")) @details = json["campaign"];
+        else if (json.HasKey("news")) @details = json["news"];
+        else @details = json;
+
+        Description = JsonGetString(details, "description");
+        if (Type == "news") {
+            Headline = JsonGetString(details, "headline");
+            Body = JsonGetString(details, "body");
+            NewsLoaded = true;
+        } else if (Type == "room") {
+            // In the detailed room response, this is often called 'campaignId'
+            uint newCid = JsonGetUint(details, "campaignId");
+            if (newCid == 0) newCid = JsonGetUint(details, "CampaignId");
+            if (newCid == 0) newCid = JsonGetUint(details, "mirrorCampaignId");
+            
+            // Protection: Never overwrite a known valid ID with 0 (which usually means a missing key in the detail response)
+            if (newCid > 0) {
+                MirrorCampaignId = newCid;
+                CampaignId = newCid; // Sync redundant property
+                trace("[Models] Room Detail Updated: " + Name + " (ID: " + MirrorCampaignId + ")");
+            } else if (MirrorCampaignId > 0) {
+                trace("[Models] Room Detail Update: Preserving existing Mirror ID: " + MirrorCampaignId + " (Detail returned 0)");
+                CampaignId = MirrorCampaignId; // Ensure sync
+            }
+        }
+        DetailsLoaded = true;
+    }
 
     // Curation specific
     bool IsAuditing = false;
     bool AuditDone = false;
     bool AuditOrderMismatch = false;
-    TmxMap[] AuditAdded;
-    MapInfo[] AuditRemoved;
+    TmxMap@[] AuditAdded;
+    MapInfo@[] AuditRemoved;
     string[] AuditFullUidList;
 
     Activity() {}
     Activity(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
+        if (json is null || json.GetType() != Json::Type::Object) return;
         
         if (json.HasKey("id")) Id = uint(json["id"]);
         else if (json.HasKey("activityId")) Id = uint(json["activityId"]);
@@ -167,6 +216,13 @@ class Activity {
             RoomId = JsonGetUint(json, "roomId");
             if (RoomId == 0) RoomId = Id; // fallback
             MirrorCampaignId = JsonGetUint(json, "campaignId");
+            if (MirrorCampaignId == 0) MirrorCampaignId = JsonGetUint(json, "CampaignId");
+            if (MirrorCampaignId == 0) MirrorCampaignId = JsonGetUint(json, "mirrorCampaignId");
+            
+            // Sync with CampaignId property for consistency across logic
+            if (MirrorCampaignId > 0) CampaignId = MirrorCampaignId;
+            
+            trace("[Models] Room discovered: " + Name + " (Mirror ID: " + MirrorCampaignId + " | Room ID: " + RoomId + ")");
         }
     }
 }
@@ -180,6 +236,7 @@ class TmxMap {
     int Difficulty; // 1-6 (Normalised for internal comparisons)
     string DifficultyName;
     uint AwardCount;
+    uint DownloadCount;
     uint RecordCount;
     bool AtBeaten;
     string SizeWarning;
@@ -188,13 +245,14 @@ class TmxMap {
     uint EmbeddedItemsSize;
     uint DisplayCost;
     string[] Tags;
+    string[] Authors;
     bool HasScreenshot;
 
     TmxMap() {}
 
     TmxMap(Json::Value@ json) {
-        if (json.GetType() != Json::Type::Object) return;
-        TrackId = json.HasKey("MapId") ? int(json["MapId"]) : 0;
+        if (json is null || json.GetType() != Json::Type::Object) return;
+        TrackId = json.HasKey("MapId") ? int(json["MapId"]) : (json.HasKey("TrackId") ? int(json["TrackId"]) : 0);
         
         if (json.HasKey("MapUid")) Uid = string(json["MapUid"]);
         else if (json.HasKey("mapUid")) Uid = string(json["mapUid"]);
@@ -205,10 +263,35 @@ class TmxMap {
 
         if (json.HasKey("Uploader") && json["Uploader"].GetType() == Json::Type::Object) {
             Author = json["Uploader"].HasKey("Name") ? Text::StripFormatCodes(string(json["Uploader"]["Name"])) : "Unknown Author";
+        } else if (json.HasKey("UploaderName")) {
+            Author = Text::StripFormatCodes(string(json["UploaderName"]));
+        } else if (json.HasKey("Author")) {
+            Author = string(json["Author"]);
         } else {
             Author = "Unknown Author";
         }
         
+        // Always include primary uploader in Authors list
+        Authors.InsertLast(Author);
+
+        if (json.HasKey("Authors") && json["Authors"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["Authors"].Length; i++) {
+                Json::Value@ a = json["Authors"][i];
+                string aName = "";
+                if (a.GetType() == Json::Type::Object) {
+                    if (a.HasKey("User") && a["User"].HasKey("Name")) {
+                        aName = string(a["User"]["Name"]);
+                    } else if (a.HasKey("Name")) {
+                        aName = string(a["Name"]);
+                    }
+                } else if (a.GetType() == Json::Type::String) {
+                    aName = string(a);
+                }
+                
+                aName = Text::StripFormatCodes(aName).Trim();
+                if (aName != "" && Authors.Find(aName) < 0) Authors.InsertLast(aName);
+            }
+        }
 
         if (json.HasKey("Medals") && json["Medals"].GetType() == Json::Type::Object && json["Medals"].HasKey("Author")) {
             LengthSecs = uint(json["Medals"]["Author"]) / 1000;
@@ -223,6 +306,8 @@ class TmxMap {
             Difficulty = dVal + 1; // Normalise to 1-6
             if (dVal >= 0 && dVal < int(TMX::DIFFICULTY_NAMES.Length))
                 DifficultyName = TMX::DIFFICULTY_NAMES[dVal];
+            else if (json.HasKey("DifficultyName"))
+                DifficultyName = string(json["DifficultyName"]);
             else
                 DifficultyName = "Unknown";
         } else {
@@ -231,6 +316,7 @@ class TmxMap {
         }
 
         AwardCount = json.HasKey("AwardCount") ? uint(json["AwardCount"]) : 0;
+        DownloadCount = json.HasKey("DownloadCount") ? uint(json["DownloadCount"]) : 0;
         RecordCount = json.HasKey("ReplayCount") ? uint(json["ReplayCount"]) : (json.HasKey("RecordCount") ? uint(json["RecordCount"]) : 0);
 
         ServerSizeExceeded = json.HasKey("ServerSizeExceeded") ? bool(json["ServerSizeExceeded"]) : false;
@@ -273,12 +359,35 @@ class TmxMap {
         } else {
             SizeWarning = ""; // GREEN (Safe)
         }
+        
+        MetadataOverrides::Intercept(@this);
+    }
+
+    string get_PrimarySurface() {
+        for (uint i = 0; i < Tags.Length; i++) {
+            if (TMX::ArrayContains(TMX::SURFACE_TAGS, Tags[i])) return Tags[i];
+        }
+        return "None";
+    }
+
+    Json::Value@ ToJson() {
+        Json::Value@ json = Json::Object();
+        json["MapId"] = TrackId;
+        json["MapUid"] = Uid;
+        json["Name"] = Name;
+        json["Author"] = Author;
+        json["Length"] = LengthSecs * 1000;
+        json["Difficulty"] = Difficulty - 1;
+        json["DifficultyName"] = DifficultyName;
+        json["AwardCount"] = AwardCount;
+        json["DownloadCount"] = DownloadCount;
+        return json;
     }
 }
 
 class TmxSearchFilters {
     string MapName = "";
-    string AuthorName = "";
+    string[] AuthorNames = {};
     int Vehicle = -1; 
     string[] IncludeTags = {};
     string[] ExcludeTags = {};
@@ -299,40 +408,159 @@ class TmxSearchFilters {
     int InCollection = -1;
     int InOnlineRecords = -1; // Retained for compatibility
     bool HideOversized = false;
+    int LimitFilter = 0; // 0=None, 1=Filter Red, 2=Filter Yellow+Red
     int CurrentPage = 1;
     bool PrimaryTagOnly = false;
     bool PrimarySurfaceOnly = false;
-    int LimitFilter = 0; // 0=None, 1=Filter Red, 2=Filter Yellow+Red
+    string PrimaryTag = "";
+    string PrimarySurface = "";
     uint ResultLimit = 25;
+    uint DisplayCostLimit = 10000;
+    uint ItemSizeLimit = 1000000;
 
     TmxSearchFilters() {}
 
     TmxSearchFilters(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
         MapName = JsonGetString(json, "MapName");
-        AuthorName = JsonGetString(json, "AuthorName");
+        
+        if (json.HasKey("Authors") && json["Authors"].GetType() == Json::Type::String) {
+            string s = string(json["Authors"]);
+            string[] parts = s.Split(",");
+            for (uint j = 0; j < parts.Length; j++) {
+                string p = parts[j].Trim();
+                if (p != "") AuthorNames.InsertLast(p);
+            }
+        } else if (json.HasKey("AuthorNames")) {
+            if (json["AuthorNames"].GetType() == Json::Type::Array) {
+                for (uint i = 0; i < json["AuthorNames"].Length; i++) {
+                    string s = string(json["AuthorNames"][i]);
+                    if (s.Contains(",")) {
+                        string[] parts = s.Split(",");
+                        for (uint j = 0; j < parts.Length; j++) {
+                            string p = parts[j].Trim();
+                            if (p != "") AuthorNames.InsertLast(p);
+                        }
+                    } else if (s.Trim() != "") {
+                        AuthorNames.InsertLast(s.Trim());
+                    }
+                }
+            } else if (json["AuthorNames"].GetType() == Json::Type::String) {
+                string s = string(json["AuthorNames"]);
+                string[] parts = s.Split(",");
+                for (uint j = 0; j < parts.Length; j++) {
+                    string p = parts[j].Trim();
+                    if (p != "") AuthorNames.InsertLast(p);
+                }
+            }
+        } else if (json.HasKey("AuthorName")) {
+            // Backward compatibility for single string key
+            string old = JsonGetString(json, "AuthorName");
+            if (old != "") {
+                string[] parts = old.Split(",");
+                for (uint j = 0; j < parts.Length; j++) {
+                    string p = parts[j].Trim();
+                    if (p != "") AuthorNames.InsertLast(p);
+                }
+            }
+        }
+
         Vehicle = JsonGetInt(json, "Vehicle", -1);
         Difficulty = JsonGetInt(json, "Difficulty", -1);
         
         if (json.HasKey("Difficulties") && json["Difficulties"].GetType() == Json::Type::Array) {
-            for (uint i = 0; i < json["Difficulties"].Length && i < Difficulties.Length; i++)
-                Difficulties[i] = bool(json["Difficulties"][i]);
+            for (uint i = 0; i < json["Difficulties"].Length && i < Difficulties.Length; i++) {
+                if (json["Difficulties"][i].GetType() == Json::Type::Boolean) {
+                    Difficulties[i] = bool(json["Difficulties"][i]);
+                } else if (json["Difficulties"][i].GetType() == Json::Type::String) {
+                    string d = string(json["Difficulties"][i]);
+                    for (uint j = 0; j < TMX::DIFFICULTY_NAMES.Length; j++) {
+                        if (TMX::DIFFICULTY_NAMES[j] == d) { Difficulties[j] = true; break; }
+                    }
+                }
+            }
         }
 
-        TimeFromMs = JsonGetUint(json, "TimeFromMs");
-        TimeToMs = JsonGetUint(json, "TimeToMs");
-        UploadedFrom = JsonGetString(json, "UploadedFrom");
-        UploadedTo = JsonGetString(json, "UploadedTo");
-        SortPrimary = JsonGetInt(json, "SortPrimary", -1);
-        SortSecondary = JsonGetInt(json, "SortSecondary", -1);
+        if (json.HasKey("IncludeTags") && json["IncludeTags"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["IncludeTags"].Length; i++) IncludeTags.InsertLast(string(json["IncludeTags"][i]));
+        }
+        if (json.HasKey("ExcludeTags") && json["ExcludeTags"].GetType() == Json::Type::Array) {
+            for (uint i = 0; i < json["ExcludeTags"].Length; i++) ExcludeTags.InsertLast(string(json["ExcludeTags"][i]));
+        }
+
+        if (json.HasKey("AuthorTimeRange")) {
+            TimeFromMs = JsonGetUint(json["AuthorTimeRange"], "Min");
+            TimeToMs = JsonGetUint(json["AuthorTimeRange"], "Max");
+        } else {
+            TimeFromMs = JsonGetUint(json, "TimeFromMs");
+            TimeToMs = JsonGetUint(json, "TimeToMs");
+        }
+
+        if (json.HasKey("UploadDateRange")) {
+            UploadedFrom = JsonGetString(json["UploadDateRange"], "From");
+            UploadedTo = JsonGetString(json["UploadDateRange"], "To");
+        } else {
+            UploadedFrom = JsonGetString(json, "UploadedFrom");
+            UploadedTo = JsonGetString(json, "UploadedTo");
+        }
+
+        SortPrimary = -1;
+        if (json.HasKey("SortPrimary")) {
+            if (json["SortPrimary"].GetType() == Json::Type::Number) {
+                SortPrimary = int(json["SortPrimary"]);
+            } else if (json["SortPrimary"].GetType() == Json::Type::String) {
+                string sp = string(json["SortPrimary"]);
+                for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                    if (TMX::SORT_NAMES[i] == sp) { SortPrimary = i; break; }
+                }
+            }
+        } else if (json.HasKey("PrimarySort")) {
+            string ps = JsonGetString(json, "PrimarySort");
+            for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                if (TMX::SORT_NAMES[i] == ps) { SortPrimary = i; break; }
+            }
+        }
+
+        SortSecondary = -1;
+        if (json.HasKey("SortSecondary")) {
+            if (json["SortSecondary"].GetType() == Json::Type::Number) {
+                SortSecondary = int(json["SortSecondary"]);
+            } else if (json["SortSecondary"].GetType() == Json::Type::String) {
+                string ss = string(json["SortSecondary"]);
+                for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                    if (TMX::SORT_NAMES[i] == ss) { SortSecondary = i; break; }
+                }
+            }
+        } else if (json.HasKey("SecondarySort")) {
+            string ss = JsonGetString(json, "SecondarySort");
+            for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) {
+                if (TMX::SORT_NAMES[i] == ss) { SortSecondary = i; break; }
+            }
+        }
+
         InTOTD = JsonGetInt(json, "InTOTD", -1);
         InCollection = JsonGetInt(json, "InCollection", -1);
-        InOnlineRecords = JsonGetInt(json, "InOnlineRecords", -1);
         HideOversized = JsonGetBool(json, "HideOversized");
         PrimaryTagOnly = JsonGetBool(json, "PrimaryTagOnly");
+        PrimaryTag = JsonGetString(json, "PrimaryTag");
+        if (PrimaryTag != "") PrimaryTagOnly = true;
+
         PrimarySurfaceOnly = JsonGetBool(json, "PrimarySurfaceOnly");
+        PrimarySurface = JsonGetString(json, "PrimarySurface");
+        if (PrimarySurface != "") PrimarySurfaceOnly = true;
+
+        ResultLimit = JsonGetUint(json, "MapLimit", 25);
+        if (ResultLimit == 25) ResultLimit = JsonGetUint(json, "ResultLimit", 25);
+        
+        if (json.HasKey("RoomGuardrails")) {
+            DisplayCostLimit = JsonGetUint(json["RoomGuardrails"], "DisplayCost", 10000);
+            ItemSizeLimit = JsonGetUint(json["RoomGuardrails"], "ItemSize", 1000000);
+        } else {
+            DisplayCostLimit = JsonGetUint(json, "DisplayCostLimit", 10000);
+            ItemSizeLimit = JsonGetUint(json, "ItemSizeLimit", 1000000);
+        }
+        
         LimitFilter = JsonGetInt(json, "LimitFilter", 0);
-        ResultLimit = JsonGetUint(json, "ResultLimit", 25);
         CurrentPage = JsonGetInt(json, "CurrentPage", 1);
 
         hFrom = (TimeFromMs / 3600000);
@@ -341,13 +569,67 @@ class TmxSearchFilters {
         hTo = (TimeToMs / 3600000);
         mTo = (TimeToMs % 3600000) / 60000;
         sTo = (TimeToMs % 60000) / 1000;
+    }
 
-        if (json.HasKey("IncludeTags") && json["IncludeTags"].GetType() == Json::Type::Array) {
-            for (uint i = 0; i < json["IncludeTags"].Length; i++) IncludeTags.InsertLast(string(json["IncludeTags"][i]));
+    Json::Value@ ToExportJson() {
+        Json::Value@ json = Json::Object();
+        if (MapName != "") json["MapName"] = MapName;
+        if (AuthorNames.Length > 0) json["Authors"] = string::Join(AuthorNames, ", ");
+        if (ResultLimit != 25) json["MapLimit"] = int(ResultLimit);
+
+        Json::Value@ diffs = Json::Array();
+        for (uint i = 0; i < Difficulties.Length; i++) {
+            if (Difficulties[i]) diffs.Add(TMX::DIFFICULTY_NAMES[i]);
         }
-        if (json.HasKey("ExcludeTags") && json["ExcludeTags"].GetType() == Json::Type::Array) {
-            for (uint i = 0; i < json["ExcludeTags"].Length; i++) ExcludeTags.InsertLast(string(json["ExcludeTags"][i]));
+        if (diffs.Length > 0) json["Difficulties"] = diffs;
+
+        if (IncludeTags.Length > 0) {
+            Json::Value@ arr = Json::Array();
+            for (uint i = 0; i < IncludeTags.Length; i++) arr.Add(IncludeTags[i]);
+            json["IncludeTags"] = arr;
         }
+        if (ExcludeTags.Length > 0) {
+            Json::Value@ arr = Json::Array();
+            for (uint i = 0; i < ExcludeTags.Length; i++) arr.Add(ExcludeTags[i]);
+            json["ExcludeTags"] = arr;
+        }
+
+        if (SortPrimary >= 0 && SortPrimary < int(TMX::SORT_NAMES.Length)) json["PrimarySort"] = TMX::SORT_NAMES[SortPrimary];
+        if (SortSecondary >= 0 && SortSecondary < int(TMX::SORT_NAMES.Length)) json["SecondarySort"] = TMX::SORT_NAMES[SortSecondary];
+
+        if (TimeFromMs > 0 || TimeToMs > 0) {
+            Json::Value@ range = Json::Object();
+            range["Min"] = int(TimeFromMs);
+            range["Max"] = int(TimeToMs);
+            json["AuthorTimeRange"] = range;
+        }
+
+        if (UploadedFrom != "" || UploadedTo != "") {
+            Json::Value@ range = Json::Object();
+            range["From"] = UploadedFrom;
+            range["To"] = UploadedTo;
+            json["UploadDateRange"] = range;
+        }
+
+        if (InTOTD != -1) json["InTOTD"] = InTOTD;
+        if (InCollection != -1) json["InCollection"] = InCollection;
+        if (PrimaryTagOnly) {
+            json["PrimaryTagOnly"] = true;
+            if (PrimaryTag != "") json["PrimaryTag"] = PrimaryTag;
+        }
+        if (PrimarySurfaceOnly) {
+            json["PrimarySurfaceOnly"] = true;
+            if (PrimarySurface != "") json["PrimarySurface"] = PrimarySurface;
+        }
+
+        if (DisplayCostLimit != 10000 || ItemSizeLimit != 1000000) {
+            Json::Value@ g = Json::Object();
+            g["DisplayCost"] = int(DisplayCostLimit);
+            g["ItemSize"] = int(ItemSizeLimit);
+            json["RoomGuardrails"] = g;
+        }
+
+        return json;
     }
 
     void SyncTimeMs() {
@@ -359,7 +641,7 @@ class TmxSearchFilters {
         SyncTimeMs();
         TmxSearchFilters@ other = TmxSearchFilters();
         other.MapName = MapName;
-        other.AuthorName = AuthorName;
+        for (uint i = 0; i < AuthorNames.Length; i++) other.AuthorNames.InsertLast(AuthorNames[i]);
         other.Vehicle = Vehicle;
         other.Difficulty = Difficulty;
         for (uint i = 0; i < Difficulties.Length; i++) other.Difficulties[i] = Difficulties[i];
@@ -379,6 +661,8 @@ class TmxSearchFilters {
         other.PrimarySurfaceOnly = PrimarySurfaceOnly;
         other.LimitFilter = LimitFilter;
         other.ResultLimit = ResultLimit;
+        other.DisplayCostLimit = DisplayCostLimit;
+        other.ItemSizeLimit = ItemSizeLimit;
         other.CurrentPage = CurrentPage;
         for (uint i = 0; i < IncludeTags.Length; i++) other.IncludeTags.InsertLast(IncludeTags[i]);
         for (uint i = 0; i < ExcludeTags.Length; i++) other.ExcludeTags.InsertLast(ExcludeTags[i]);
@@ -387,41 +671,120 @@ class TmxSearchFilters {
 
     Json::Value@ ToJson() {
         SyncTimeMs();
+        TmxSearchFilters@ def = TmxSearchFilters();
         Json::Value@ json = Json::Object();
-        json["MapName"] = MapName;
-        json["AuthorName"] = AuthorName;
-        json["Vehicle"] = Vehicle;
-        json["Difficulty"] = Difficulty;
         
-        Json::Value@ diffs = Json::Array();
-        for (uint i = 0; i < Difficulties.Length; i++) diffs.Add(Difficulties[i]);
-        json["Difficulties"] = diffs;
+        if (MapName != def.MapName) json["MapName"] = MapName;
+        
+        if (AuthorNames.Length > 0) {
+            Json::Value@ authors = Json::Array();
+            for (uint i = 0; i < AuthorNames.Length; i++) authors.Add(AuthorNames[i]);
+            json["AuthorNames"] = authors;
+        }
 
-        json["TimeFromMs"] = TimeFromMs;
-        json["TimeToMs"] = TimeToMs;
-        json["UploadedFrom"] = UploadedFrom;
-        json["UploadedTo"] = UploadedTo;
-        json["SortPrimary"] = SortPrimary;
-        json["SortSecondary"] = SortSecondary;
-        json["InTOTD"] = InTOTD;
-        json["InCollection"] = InCollection;
-        json["InOnlineRecords"] = InOnlineRecords;
-        json["HideOversized"] = HideOversized;
-        json["PrimaryTagOnly"] = PrimaryTagOnly;
-        json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
-        json["LimitFilter"] = LimitFilter;
-        json["ResultLimit"] = ResultLimit;
-        json["CurrentPage"] = CurrentPage;
+        if (Vehicle != def.Vehicle) json["Vehicle"] = Vehicle;
+        if (Difficulty != def.Difficulty) json["Difficulty"] = Difficulty;
         
-        Json::Value@ inc = Json::Array();
-        for (uint i = 0; i < IncludeTags.Length; i++) inc.Add(IncludeTags[i]);
-        json["IncludeTags"] = inc;
+        bool diffsChanged = false;
+        for (uint i = 0; i < Difficulties.Length; i++) {
+            if (Difficulties[i] != def.Difficulties[i]) { diffsChanged = true; break; }
+        }
+        if (diffsChanged) {
+            Json::Value@ diffs = Json::Array();
+            for (uint i = 0; i < Difficulties.Length; i++) diffs.Add(Difficulties[i]);
+            json["Difficulties"] = diffs;
+        }
+
+        if (TimeFromMs != def.TimeFromMs) json["TimeFromMs"] = TimeFromMs;
+        if (TimeToMs != def.TimeToMs) json["TimeToMs"] = TimeToMs;
+        if (UploadedFrom != def.UploadedFrom) json["UploadedFrom"] = UploadedFrom;
+        if (UploadedTo != def.UploadedTo) json["UploadedTo"] = UploadedTo;
         
-        Json::Value@ exc = Json::Array();
-        for (uint i = 0; i < ExcludeTags.Length; i++) exc.Add(ExcludeTags[i]);
-        json["ExcludeTags"] = exc;
+        if (SortPrimary != def.SortPrimary) {
+            if (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) {
+                json["SortPrimary"] = TMX::SORT_NAMES[SortPrimary];
+            } else {
+                json["SortPrimary"] = -1;
+            }
+        }
+
+        if (SortSecondary != def.SortSecondary) {
+            if (SortSecondary >= 0 && uint(SortSecondary) < TMX::SORT_NAMES.Length) {
+                json["SortSecondary"] = TMX::SORT_NAMES[SortSecondary];
+            } else {
+                json["SortSecondary"] = -1;
+            }
+        }
+
+        if (InTOTD != def.InTOTD) json["InTOTD"] = InTOTD;
+        if (InCollection != def.InCollection) json["InCollection"] = InCollection;
+        if (InOnlineRecords != def.InOnlineRecords) json["InOnlineRecords"] = InOnlineRecords;
+        if (HideOversized != def.HideOversized) json["HideOversized"] = HideOversized;
+        if (PrimaryTagOnly != def.PrimaryTagOnly) json["PrimaryTagOnly"] = PrimaryTagOnly;
+        if (PrimarySurfaceOnly != def.PrimarySurfaceOnly) json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
+        if (LimitFilter != def.LimitFilter) json["LimitFilter"] = LimitFilter;
+        if (ResultLimit != def.ResultLimit) json["ResultLimit"] = ResultLimit;
+        if (CurrentPage > 1) json["CurrentPage"] = CurrentPage;
+        if (DisplayCostLimit != def.DisplayCostLimit) json["DisplayCostLimit"] = DisplayCostLimit;
+        if (ItemSizeLimit != def.ItemSizeLimit) json["ItemSizeLimit"] = ItemSizeLimit;
+        
+        if (IncludeTags.Length > 0) {
+            Json::Value@ inc = Json::Array();
+            for (uint i = 0; i < IncludeTags.Length; i++) inc.Add(IncludeTags[i]);
+            json["IncludeTags"] = inc;
+        }
+        
+        if (ExcludeTags.Length > 0) {
+            Json::Value@ exc = Json::Array();
+            for (uint i = 0; i < ExcludeTags.Length; i++) exc.Add(ExcludeTags[i]);
+            json["ExcludeTags"] = exc;
+        }
         
         return json;
+    }
+
+    string GetDifference(TmxSearchFilters@ other) {
+        if (other is null) return "Other filter is null";
+        string diff = "";
+        if (MapName != other.MapName) diff += "MapName: '" + MapName + "' != '" + other.MapName + "', ";
+        if (AuthorNames.Length != other.AuthorNames.Length) {
+            diff += "AuthorCount: " + AuthorNames.Length + " != " + other.AuthorNames.Length + ", ";
+        } else {
+            for (uint i = 0; i < AuthorNames.Length; i++) {
+                if (AuthorNames[i] != other.AuthorNames[i]) {
+                    diff += "AuthorNames mismatch, ";
+                    break;
+                }
+            }
+        }
+        if (Vehicle != other.Vehicle) diff += "Vehicle: " + Vehicle + " != " + other.Vehicle + ", ";
+        if (Difficulty != other.Difficulty) diff += "Difficulty: " + Difficulty + " != " + other.Difficulty + ", ";
+        if (TimeFromMs != other.TimeFromMs) diff += "TimeFrom: " + TimeFromMs + " != " + other.TimeFromMs + ", ";
+        if (TimeToMs != other.TimeToMs) diff += "TimeTo: " + TimeToMs + " != " + other.TimeToMs + ", ";
+        if (UploadedFrom != other.UploadedFrom) diff += "UploadedFrom: " + UploadedFrom + " != " + other.UploadedFrom + ", ";
+        if (UploadedTo != other.UploadedTo) diff += "UploadedTo: " + UploadedTo + " != " + other.UploadedTo + ", ";
+        if (SortPrimary != other.SortPrimary) {
+            string p1 = (SortPrimary >= 0 && uint(SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(SortPrimary)] : "Unknown";
+            string p2 = (other.SortPrimary >= 0 && uint(other.SortPrimary) < TMX::SORT_NAMES.Length) ? TMX::SORT_NAMES[uint(other.SortPrimary)] : "Unknown";
+            diff += "SortPrimary: " + p1 + " != " + p2 + ", ";
+        }
+        if (InTOTD != other.InTOTD) diff += "InTOTD: " + InTOTD + " != " + other.InTOTD + ", ";
+        if (InCollection != other.InCollection) diff += "InCollection: " + InCollection + " != " + other.InCollection + ", ";
+        if (CurrentPage != other.CurrentPage) diff += "CurrentPage: " + CurrentPage + " != " + other.CurrentPage + ", ";
+        
+        if (IncludeTags.Length != other.IncludeTags.Length) {
+            diff += "IncludeTags count mismatch, ";
+        } else {
+            for (uint i = 0; i < IncludeTags.Length; i++) {
+                if (IncludeTags[i] != other.IncludeTags[i]) {
+                    diff += "IncludeTags values mismatch, ";
+                    break;
+                }
+            }
+        }
+        
+        if (diff.EndsWith(", ")) diff = diff.SubStr(0, diff.Length - 2);
+        return diff;
     }
 }
 
@@ -434,6 +797,11 @@ class Subscription {
     uint LastRun = 0;
     string[] CurrentMapUids;
 
+    // Source Selection (0 = Search filters, 1 = TMX/Custom List)
+    int SourceType = 0;
+    string ListId = "";
+    string ListType = ""; // "favorites", "playlater", "custom", "set"
+
     Subscription() { @Filters = TmxSearchFilters(); }
     Subscription(Json::Value@ json) {
         if (json.GetType() != Json::Type::Object) return;
@@ -444,6 +812,10 @@ class Subscription {
         MapLimit = JsonGetUint(json, "MapLimit", 25);
         LastRun = JsonGetUint(json, "LastRun");
         
+        SourceType = JsonGetInt(json, "SourceType", 0);
+        ListId = JsonGetString(json, "ListId");
+        ListType = JsonGetString(json, "ListType");
+
         if (json.HasKey("CurrentMapUids") && json["CurrentMapUids"].GetType() == Json::Type::Array) {
             for (uint i = 0; i < json["CurrentMapUids"].Length; i++) CurrentMapUids.InsertLast(string(json["CurrentMapUids"][i]));
         }
@@ -457,6 +829,10 @@ class Subscription {
         json["Filters"] = Filters.ToJson();
         json["MapLimit"] = MapLimit;
         json["LastRun"] = LastRun;
+        
+        json["SourceType"] = SourceType;
+        json["ListId"] = ListId;
+        json["ListType"] = ListType;
         
         Json::Value@ maps = Json::Array();
         for (uint i = 0; i < CurrentMapUids.Length; i++) maps.Add(CurrentMapUids[i]);
@@ -498,12 +874,10 @@ namespace TMX {
     };
 
     const string[] SORT_NAMES = {
-        "Awards Most", "Awards Least", "Downloads Most", "Activity Newest",
-        "Comments Most", "Comments Least", "Difficulty Easiest", "Difficulty Hardest",
-        "Length Shortest", "Length Longest", "Name A-Z", "Name Z-A",
-        "Online Rating Most", "Online Rating Least",
-        "Uploaded Newest", "Uploaded Oldest",
-        "Awards This Week", "Awards This Month"
+        "Awards Most", "Awards Least", "Uploaded Oldest", 
+        "Downloads Most", "Downloads Least",
+        "Uploaded Newest", "Difficulty Easiest",
+        "Difficulty Hardest", "Name A-Z", "Name Z-A"
     };
 
     const string[] COLLECTION_NAMES = { "Track of the Day", "ManiaClub", "World Tour", "Classic", "Map Pack" };

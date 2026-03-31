@@ -1,0 +1,38 @@
+{
+  "clubName": "My Club Name",
+  "folders": [
+    {
+      "name": "Featured Campaigns",
+      "activities": [
+        {
+          "name": "Season 1: Spring",
+          "type": "campaign",
+          "active": true,
+          "subscription": {
+            "filters": {
+              "AuthorNames": ["Nadeo"],
+              "SortPrimary": 0,
+              "InTOTD": 1
+            },
+            "mapLimit": 25
+          }
+        }
+      ]
+    }
+  ],
+  "activities": [
+    {
+      "name": "Community Spotlight Room",
+      "type": "room",
+      "active": true,
+      "subscription": {
+        "filters": {
+          "IncludeTags": ["Tech", "Dirt"],
+          "SortPrimary": 0
+        },
+        "mapLimit": 100
+      }
+    }
+  ],
+  "prune": false
+}

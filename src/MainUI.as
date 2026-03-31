@@ -16,6 +16,7 @@ namespace CM_UI {
                         startnew(RefreshClubs);
                         startnew(RefreshActivities);
                     }
+
                     UI::EndMenu();
                 }
                 UI::EndMenuBar();
@@ -29,5 +30,12 @@ namespace CM_UI {
             UI::EndTabBar();
         }
         UI::End(); // MUST be called regardless of whether Begin() returns true or false
+    }
+
+    Tab@ GetTab(const string &in name) {
+        for (uint i = 0; i < tabs.Length; i++) {
+            if (tabs[i].tabName == name) return tabs[i];
+        }
+        return null;
     }
 }

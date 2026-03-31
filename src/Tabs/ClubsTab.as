@@ -29,6 +29,7 @@ class ClubsTab : Tab {
                     State::clubPublic = State::SelectedClub.Public;
                     State::isInitialised = false;
                     State::bulkAuditComplete = false;
+                    AuditCache::Init();
                     startnew(RefreshActivities);
                 }
             }
@@ -60,6 +61,34 @@ class ClubsTab : Tab {
             UI::Separator();
             UI::TextDisabled(Icons::InfoCircle + " Note: Campaign and Room updates may require a manual UI refresh (Shift + Scroll Lock).");
         }
+
+        if (showImportModal) {
+            UI::OpenPopup("Select Configuration");
+            showImportModal = false;
+        }
+
+        if (UI::BeginPopupModal("Select Configuration", UI::WindowFlags::AlwaysAutoResize)) {
+            UI::Text("Select a configuration file to import:");
+            if (UI::BeginCombo("##File", selectedConfig == "" ? "Select File..." : selectedConfig)) {
+                for (uint i = 0; i < availableConfigs.Length; i++) {
+                    if (UI::Selectable(availableConfigs[i], selectedConfig == availableConfigs[i])) {
+                        selectedConfig = availableConfigs[i];
+                    }
+                }
+                UI::EndCombo();
+            }
+
+            UI::Separator();
+            if (UI::Button("Dry Run")) {
+                startnew(RunImportFlowInternal, selectedConfig);
+                UI::CloseCurrentPopup();
+            }
+            UI::SameLine();
+            if (UI::Button("Cancel")) {
+                UI::CloseCurrentPopup();
+            }
+            UI::EndPopup();
+        }
     }
 
     // --- Activity Tab Implementation ---
@@ -67,6 +96,9 @@ class ClubsTab : Tab {
     bool showCreateFolderModal = false;
     bool showCreateCampaignModal = false;
     bool showCreateRoomModal = false;
+    bool showImportModal = false;
+    string[] availableConfigs;
+    string selectedConfig;
     uint[] renderedIds;
 
     void RenderActivityTab() {
@@ -79,6 +111,14 @@ class ClubsTab : Tab {
         if (UI::Button("Create Campaign")) { State::nextActivityName = "New Campaign"; showCreateCampaignModal = true; }
         UI::SameLine();
         if (UI::Button("Create Room")) { State::nextActivityName = "New Room"; showCreateRoomModal = true; }
+        UI::SameLine();
+        if (UI::Button(Icons::CloudDownload + " Import Config")) {
+            startnew(RunImportFlow);
+        }
+        UI::SameLine();
+        if (UI::Button(Icons::CloudUpload + " Export Config")) {
+            ConfigExporter::Export();
+        }
 
         UI::Separator();
 
@@ -91,14 +131,45 @@ class ClubsTab : Tab {
                 UI::SameLine();
                 if (UI::Button(Icons::Refresh + " Re-Audit All")) startnew(DoBulkAudit);
                 UI::TextDisabled(State::bulkAuditStatus);
+                RenderAuditSummary();
             } else {
                 UI::Text("\\$8f8" + Icons::Check + " Audit Complete: All subscriptions are up to date.");
                 if (UI::Button(Icons::Refresh + " Re-Audit All")) startnew(DoBulkAudit);
             }
         } else {
-            if (UI::Button("\\$f80" + Icons::Refresh + "\\$z Audit All Subscriptions")) startnew(DoBulkAudit);
-            UI::SameLine();
-            if (UI::Button(Icons::Trash + " Clean Up Orphaned Subscriptions")) Subscriptions::CleanupOrphans();
+            // Initial state: No audit in progress or complete for this club session
+            if (UI::Button(Icons::Search + " Audit All Subscriptions")) startnew(DoBulkAudit);
+        }
+
+        if (ConfigImporter::log.Length > 0) {
+            UI::Separator();
+            UI::Text("\\$f80" + Icons::Book + " Importer Log " + (ConfigImporter::isImporting ? Icons::Spinner : ""));
+            if (UI::BeginChild("ImporterLog", vec2(0, 150), true)) {
+                for (uint i = 0; i < ConfigImporter::log.Length; i++) {
+                    auto entry = ConfigImporter::log[i];
+                    string color = "";
+                    if (entry.Type == ConfigImporter::LogType::Error) color = "\\$f44";
+                    else if (entry.Type == ConfigImporter::LogType::Warning) color = "\\$f80";
+                    
+                    if (color != "") UI::Text(color + entry.Msg);
+                    else UI::TextDisabled(entry.Msg);
+                }
+                if (ConfigImporter::isImporting) UI::SetScrollHereY(1.0f);
+            }
+            UI::EndChild();
+            if (ConfigImporter::dryRun && !ConfigImporter::isImporting) {
+                bool hasErrors = ConfigImporter::currentDelta !is null && ConfigImporter::currentDelta.Errors > 0;
+                UI::BeginDisabled(hasErrors);
+                if (UI::Button(Icons::Check + " Commit Import")) {
+                     startnew(CommitImportFlow);
+                }
+                UI::EndDisabled();
+                if (hasErrors) {
+                    UI::SameLine();
+                    UI::Text("\\$f44" + Icons::ExclamationTriangle + " Resolve Errors to Commit");
+                }
+            }
+            if (UI::Button("Clear Log")) ConfigImporter::log.RemoveRange(0, ConfigImporter::log.Length);
         }
 
 
@@ -106,7 +177,7 @@ class ClubsTab : Tab {
 
         UI::Separator();
 
-        Activity[]@ items = State::ClubActivities;
+        Activity@[]@ items = State::ClubActivities;
         if (items.Length == 0 && !State::refreshingActivities) {
             UI::TextDisabled("No activities found for this club.");
         } else {
@@ -132,6 +203,40 @@ class ClubsTab : Tab {
                 }
             }
             UI::EndChild();
+        }
+    }
+
+    void RenderAuditSummary() {
+        UI::PushStyleColor(UI::Col::Header, vec4(0.15f, 0.15f, 0.15f, 0.5f));
+        bool open = UI::CollapsingHeader(Icons::ListUl + " Changed Activities");
+        UI::PopStyleColor();
+        if (!open) return;
+
+        bool anyShown = false;
+        for (uint i = 0; i < State::ClubActivities.Length; i++) {
+            Activity@ a = State::ClubActivities[i];
+            if (!a.AuditDone) continue;
+            if (a.AuditAdded.Length == 0 && a.AuditRemoved.Length == 0 && !a.AuditOrderMismatch) continue;
+
+            anyShown = true;
+            string icon = a.Type == "campaign" ? Icons::Flag : Icons::Gamepad;
+            UI::Text(icon + " " + a.Name);
+            UI::SameLine(0, 12);
+            if (a.AuditAdded.Length > 0) {
+                UI::Text("\\$0f0+" + a.AuditAdded.Length);
+                UI::SameLine(0, 8);
+            }
+            if (a.AuditRemoved.Length > 0) {
+                UI::Text("\\$f44-" + a.AuditRemoved.Length);
+                UI::SameLine(0, 8);
+            }
+            if (a.AuditOrderMismatch) {
+                UI::TextDisabled("(order changed)");
+            }
+        }
+
+        if (!anyShown) {
+            UI::TextDisabled("No details available.");
         }
     }
 
@@ -188,14 +293,14 @@ class ClubsTab : Tab {
         }
     }
 
-    void RenderActivities(uint folderId, Activity[]@ items) {
-        Activity@[] siblings = GetSortedSiblings(folderId, items);
+    void RenderActivities(uint parentId, Activity@[]@ items) {
+        Activity@[] siblings = GetSortedSiblings(parentId, items);
         for (uint i = 0; i < siblings.Length; i++) {
             RenderActivityNode(siblings[i], items);
         }
     }
 
-    void RenderActivityNode(Activity@ a, Activity[]@ items) {
+    void RenderActivityNode(Activity@ a, Activity@[]@ items) {
         renderedIds.InsertLast(a.Id);
         UI::PushID("act_" + a.Id);
 
@@ -209,6 +314,7 @@ class ClubsTab : Tab {
         if (a.IsRenaming) {
             UI::SetNextItemWidth(200);
             a.RenameBuffer = UI::InputText("##rename", a.RenameBuffer);
+            if (a.Type == "news" && a.RenameBuffer.Length > 20) a.RenameBuffer = a.RenameBuffer.SubStr(0, 20);
             UI::SameLine();
             if (UI::Button(Icons::Check + "##confirm")) { 
                 if (a.RenameBuffer != "") { startnew(DoRenameActivity, a); a.IsRenaming = false; }
@@ -334,13 +440,21 @@ class ClubsTab : Tab {
 
     void DisplayActivityContent(Activity@ a) {
         if (a.Type == "news") {
-            if (!a.NewsLoaded && !a.LoadingMaps) { a.LoadingMaps = true; startnew(LoadActivityDetails, a); }
-        } else if (!a.MapsLoaded && !a.LoadingMaps && a.Type != "folder") {
+            if (!a.NewsLoaded && !a.LoadingMaps && !a.Failed) { a.LoadingMaps = true; startnew(LoadActivityDetails, a); }
+        } else if (!a.MapsLoaded && !a.LoadingMaps && a.Type != "folder" && !a.Failed) {
             a.LoadingMaps = true; startnew(LoadActivityMaps, a);
         }
 
         if (a.LoadingMaps) {
-            UI::TextDisabled("Loading content...");
+            UI::TextDisabled(Icons::Spinner + " Loading content...");
+        } else if (a.Failed) {
+            UI::Text("\\$f00" + Icons::ExclamationTriangle + " Failed to load metadata.");
+            UI::SameLine();
+            if (UI::Button(Icons::Refresh + " Retry##" + a.Id)) {
+                a.Failed = false;
+                if (a.Type == "news") startnew(LoadActivityDetails, a);
+                else startnew(LoadActivityMaps, a);
+            }
         } else {
             if (a.Type == "campaign" || a.Type == "room") {
                 bool isMirrored = a.Type == "room" && a.MirrorCampaignId > 0;
@@ -433,9 +547,11 @@ class ClubsTab : Tab {
                 }
             }
  else if (a.Type == "news") {
-                a.Headline = UI::InputText("Headline", a.Headline);
-                a.Body = UI::InputTextMultiline("Body", a.Body, vec2(0, 150));
-                if (UI::Button(Icons::FloppyO + " Save News")) startnew(DoSaveNews, a);
+                a.Headline = UI::InputText("News Headline (max 26 chars)", a.Headline);
+                if (a.Headline.Length > 26) a.Headline = a.Headline.SubStr(0, 26);
+                a.Body = UI::InputTextMultiline("News Body (max 1986 chars)", a.Body, vec2(0, 100));
+                if (a.Body.Length > 1986) a.Body = a.Body.SubStr(0, 1986);
+                if (UI::Button(Icons::FloppyO + " Save News Content")) startnew(DoSaveNews, a);
             }
             if (a.Type == "room" && a.MirrorCampaignId > 0) {
                 // Mirrored rooms do not support manual curation or subscriptions
@@ -451,41 +567,46 @@ class ClubsTab : Tab {
         if (sub is null) return;
         UI::Separator();
         UI::Text("\\$f80" + Icons::MapMarker + "\\$z Subscription Curation Audit");
-        
+
         if (a.IsAuditing) {
             UI::Text("\\$888" + Icons::Spinner + " Auditing TMX...");
         } else if (a.AuditDone) {
             // Display Filter Summary for context
-            if (UI::TreeNode("Subscription Filter Summary##" + a.Id)) {
-                if (sub.Filters.CurrentPage > 1) UI::TextDisabled("Page: " + sub.Filters.CurrentPage);
-                if (sub.Filters.AuthorName != "") UI::TextDisabled("Author: " + sub.Filters.AuthorName);
-                if (sub.Filters.Vehicle >= 0 && sub.Filters.Vehicle < int(TMX::VEHICLE_NAMES.Length)) 
-                    UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
-                
-                if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
-                    UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary] + (sub.Filters.SortSecondary >= 0 ? " -> " + TMX::SORT_NAMES[sub.Filters.SortSecondary] : ""));
+            if (sub.SourceType == 0) {
+                if (UI::TreeNode("Subscription Filter Summary##" + a.Id)) {
+                    if (sub.Filters.CurrentPage > 1) UI::TextDisabled("Page: " + sub.Filters.CurrentPage);
+                    if (sub.Filters.AuthorNames.Length > 0) UI::TextDisabled("Author(s): " + string::Join(sub.Filters.AuthorNames, ", "));
+                    if (sub.Filters.Vehicle >= 0 && sub.Filters.Vehicle < int(TMX::VEHICLE_NAMES.Length)) 
+                        UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
+                    
+                    if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
+                        UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary]);
 
-                if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
-                if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));
-                
-                string diffList = "";
-                for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
-                if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
+                    if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
+                    if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));
+                    
+                    string diffList = "";
+                    for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
+                    if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
 
-                if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "") 
-                    UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
-                
-                if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)
-                    UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
+                    if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "") 
+                        UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
+                    
+                    if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)
+                        UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
 
-                if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
-                if (sub.Filters.InCollection >= 0 && sub.Filters.InCollection < int(TMX::COLLECTION_NAMES.Length))
-                    UI::TextDisabled("Collection: " + TMX::COLLECTION_NAMES[sub.Filters.InCollection]);
-                if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
-                if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
+                    if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
+                    if (sub.Filters.InCollection >= 0 && sub.Filters.InCollection < int(TMX::COLLECTION_NAMES.Length))
+                        UI::TextDisabled("Collection: " + TMX::COLLECTION_NAMES[sub.Filters.InCollection]);
+                    if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
+                    if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
+                    UI::TextDisabled("Max Maps: " + sub.MapLimit);
+
+                    UI::TreePop();
+                }
+            } else {
+                UI::TextDisabled("Using maps from Local List: " + sub.ListId);
                 UI::TextDisabled("Max Maps: " + sub.MapLimit);
-
-                UI::TreePop();
             }
 
             bool hasChanges = a.AuditAdded.Length > 0 || a.AuditRemoved.Length > 0 || a.AuditOrderMismatch;
@@ -510,10 +631,11 @@ class ClubsTab : Tab {
                 if (UI::Button(Icons::Times + " Discard##" + a.Id)) startnew(DoDiscardAudit, a);
 
                 if (showAuditDetails) {
-                    if (UI::BeginTable("AuditDetails_" + a.Id, 4, UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
+                    if (UI::BeginTable("AuditDetails_" + a.Id, 5, UI::TableFlags::Borders | UI::TableFlags::RowBg)) {
                         UI::TableSetupColumn("Action", UI::TableColumnFlags::WidthFixed, 60);
                         UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
                         UI::TableSetupColumn("Author", UI::TableColumnFlags::WidthStretch);
+                        UI::TableSetupColumn("Tags", UI::TableColumnFlags::WidthStretch);
                         UI::TableSetupColumn("Warn", UI::TableColumnFlags::WidthFixed, 40);
                         UI::TableHeadersRow();
 
@@ -523,7 +645,9 @@ class ClubsTab : Tab {
                             UI::TableSetBgColor(UI::TableBgTarget::RowBg0, vec4(0, 0.4f, 0, 0.3f));
                             UI::TableNextColumn(); UI::Text("\\$0f0" + Icons::PlusCircle + " ADD");
                             UI::TableNextColumn(); UI::Text(m.Name);
+                            MetadataOverrides::RenderOverrideMenu(m);
                             UI::TableNextColumn(); UI::Text(m.Author);
+                            UI::TableNextColumn(); UI::Text(string::Join(m.Tags, ", "));
                             UI::TableNextColumn(); UI::Text(m.SizeWarning);
                         }
                         for (uint i = 0; i < a.AuditRemoved.Length; i++) {
@@ -554,7 +678,7 @@ class ClubsTab : Tab {
         }
     }
 
-    Activity@[] GetSortedSiblings(uint folderId, Activity[]@ items) {
+    Activity@[] GetSortedSiblings(uint folderId, Activity@[]@ items) {
         Activity@[] siblings;
         for (uint i = 0; i < items.Length; i++) if (items[i].FolderId == folderId) siblings.InsertLast(items[i]);
         // Simple sort
@@ -589,4 +713,49 @@ class ClubsTab : Tab {
         UI::Separator();
         if (UI::Button(Icons::FloppyO + " Update Settings")) startnew(DoUpdateBranding, null);
     }
+}
+
+void RunImportFlow() {
+    ClubsTab@ tab = cast<ClubsTab>(CM_UI::GetTab("Clubs"));
+    if (tab is null) return;
+
+    tab.availableConfigs = ConfigImporter::GetAvailableConfigs();
+    if (tab.availableConfigs.Length == 0) {
+        UI::ShowNotification("Importer", "No .json configuration files found in storage.", vec4(0.8, 0.4, 0.1, 1), 7000);
+        return;
+    }
+    
+    tab.selectedConfig = "";
+    tab.showImportModal = true;
+}
+
+void CommitImportFlow() {
+    ClubsTab@ tab = cast<ClubsTab>(CM_UI::GetTab("Clubs"));
+    if (tab !is null && tab.selectedConfig != "") {
+        startnew(RunImportFlowInternalCommit, tab.selectedConfig);
+    }
+}
+
+void RunImportFlowInternal(const string &in filename) {
+    RunImportFlowCore(filename, true);
+}
+
+void RunImportFlowInternalCommit(const string &in filename) {
+    RunImportFlowCore(filename, false);
+}
+
+void RunImportFlowCore(const string &in filename, bool isDryRun) {
+    string path = IO::FromStorageFolder(filename);
+    if (!IO::FileExists(path)) {
+        UI::ShowNotification("Importer", "File not found: " + filename, vec4(0.8, 0.4, 0.1, 1), 7000);
+        return;
+    }
+
+    Json::Value@ json = Json::FromFile(path);
+    if (json is null || json.GetType() != Json::Type::Object) {
+        UI::ShowNotification("Importer", "Failed to parse " + filename, vec4(0.8, 0.2, 0.2, 1), 7000);
+        return;
+    }
+
+    ConfigImporter::Import(json, isDryRun);
 }

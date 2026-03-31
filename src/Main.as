@@ -12,10 +12,16 @@ void Main() {
     UserHasPermissions = true;
     AddAudiences();
     Subscriptions::Load();
+    CustomLists::Load();
+    MetadataOverrides::Load();
+    AuditCache::Init();
+    startnew(MetadataOverrides::SyncAllNames);
     
     // Initialize UI Tabs
     CM_UI::tabs.InsertLast(ClubsTab());
     CM_UI::tabs.InsertLast(CurationTab());
+    CM_UI::tabs.InsertLast(TMXListsTab());
+    CM_UI::tabs.InsertLast(GlobalOverridesTab());
     CM_UI::tabs.InsertLast(LocalMapsTab());
     
     // trace("Club Manager Loaded (Modular Architecture)");
