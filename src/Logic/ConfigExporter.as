@@ -9,6 +9,8 @@ namespace ConfigExporter {
 
         Json::Value@ config = Json::Object();
         config["clubName"] = State::SelectedClub.Name;
+        if (State::SelectedClub.Tag != "") config["clubTag"] = State::SelectedClub.Tag;
+        if (State::SelectedClub.Description != "") config["clubDescription"] = State::SelectedClub.Description;
         config["prune"] = false;
 
         Activity@[]@ items = State::ClubActivities;

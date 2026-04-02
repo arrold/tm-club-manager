@@ -1,7 +1,7 @@
 // API/TMX.as - TMX API Service (Modularized, Stable Logic from REF)
 
 namespace TMX {
-    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%5B%5D%2CLength%2CDifficulty%2CAwardCount%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
+    const string TMX_FIELDS = "MapId%2CMapUid%2CName%2CUploader.Name%2CAuthors%5B%5D%2CLength%2CDifficulty%2CAwardCount%2CTrackValue%2CTags%2CUploadedAt%2CHasThumbnail%2CMedals.Author";
 
     void Notify(const string &in msg) {
         UI::ShowNotification("Trackmania Club Manager", msg);
@@ -61,11 +61,71 @@ namespace TMX {
         return TmxRequest("https://trackmania.exchange/api/maps?" + params, useCache);
     }
 
+    // Fetch up to 10 maps by UID using the single-map get_map_info endpoint.
+    // The V2 search mapuids[] filter is non-functional; this is the reliable alternative.
+    TmxMap@[] GetMapsByUids(string[]@ uids) {
+        TmxMap@[] result;
+        if (uids.Length == 0) return result;
+        uint fetchCount = Math::Min(uids.Length, uint(10));
+
+        for (uint i = 0; i < fetchCount; i++) {
+            string url = "https://trackmania.exchange/api/maps/get_map_info/uid/" + Net::UrlEncode(uids[i]);
+            Json::Value@ json = TmxRequest(url, false);
+            if (json !is null && json.GetType() == Json::Type::Object) {
+                result.InsertLast(TmxMap(json));
+            } else {
+                warn("[TMX] GetMapsByUids: no data for UID " + uids[i]);
+            }
+        }
+
+        if (result.Length == 0) return result;
+
+        // TOTD cross-check using the correct 'uid' parameter (comma-separated, not mapuids[])
+        string uidCsv = "";
+        for (uint i = 0; i < result.Length; i++) {
+            if (uidCsv != "") uidCsv += ",";
+            uidCsv += result[i].Uid;
+        }
+        string totdParams = "uid=" + Net::UrlEncode(uidCsv) + "&intotd=1&count=" + tostring(result.Length) + "&fields=MapUid";
+        Json::Value@ totdJson = TmxSearch(totdParams, false);
+        dictionary totdUids;
+        if (totdJson !is null) {
+            Json::Value@ totdArr = null;
+            if (totdJson.GetType() == Json::Type::Array) @totdArr = totdJson;
+            else if (totdJson.GetType() == Json::Type::Object) {
+                if (totdJson.HasKey("Results")) @totdArr = totdJson["Results"];
+                else if (totdJson.HasKey("results")) @totdArr = totdJson["results"];
+            }
+            if (totdArr !is null) {
+                trace("[TMX] TOTD cross-check: got " + totdArr.Length + " results");
+                for (uint i = 0; i < totdArr.Length; i++) {
+                    string tUid = totdArr[i].HasKey("MapUid") ? string(totdArr[i]["MapUid"]) : "";
+                    if (tUid != "") totdUids[tUid] = true;
+                }
+            }
+        }
+        uint totdMarked = 0;
+        for (uint i = 0; i < result.Length; i++) {
+            result[i].IsTOTD = totdUids.Exists(result[i].Uid);
+            if (result[i].IsTOTD) totdMarked++;
+        }
+        trace("[TMX] GetMapsByUids: " + result.Length + " maps fetched, " + totdMarked + " marked TOTD");
+
+        return result;
+    }
+
     uint GetTagIdFromName(const string &in name) {
         for (uint i = 0; i < TMX::TAG_NAMES.Length; i++) {
             if (TMX::TAG_NAMES[i] == name) return TMX::TAG_IDS[i];
         }
         return 0;
+    }
+
+    string GetTagNameFromId(int id) {
+        for (uint i = 0; i < TMX::TAG_IDS.Length; i++) {
+            if (TMX::TAG_IDS[i] == id) return TMX::TAG_NAMES[i];
+        }
+        return "";
     }
 
     int GetSortEnumValue(int index) {
@@ -166,7 +226,7 @@ namespace TMX {
             int enumVal = GetSortEnumValue(f.SortPrimary);
             if (enumVal >= 0) params += "&order1=" + tostring(enumVal);
         }
-        if (f.SortSecondary >= 0 && f.InTOTD != 0 && f.SortPrimary != 0) {
+        if (f.SortSecondary >= 0 && !(f.SortPrimary == 0 && f.InTOTD == 0)) {
             int enumVal = GetSortEnumValue(f.SortSecondary);
             if (enumVal >= 0) params += "&order2=" + tostring(enumVal);
         }

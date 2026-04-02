@@ -26,7 +26,7 @@ namespace ConfigImporter {
         array<string> allFiles = IO::IndexFolder(dir, true);
         for (uint i = 0; i < allFiles.Length; i++) {
             string f = allFiles[i];
-            if (f.EndsWith(".json") && !f.Contains("subscriptions.json") && !f.Contains("metadata_overrides.json") && !f.Contains("custom_lists.json")) {
+            if (f.EndsWith(".json") && !f.Contains("subscriptions.json") && !f.Contains("metadata_overrides.json") && !f.Contains("custom_lists.json") && !f.Contains("club_overrides.json") && !f.Contains("tmp_filter_edit.json")) {
                 // Return only the filename for easier selection
                 files.InsertLast(f.Replace(dir, ""));
             }
@@ -97,6 +97,18 @@ namespace ConfigImporter {
             currentDelta.Errors++;
             isImporting = false;
             return;
+        }
+
+        // Club tag / description are informational — cannot be set via API, must be changed on the Nadeo website.
+        if (config.HasKey("clubTag")) {
+            string tag = JsonGetString(config, "clubTag");
+            if (tag != State::SelectedClub.Tag)
+                Log("Note: Config club tag is '" + tag + "' but current tag is '" + State::SelectedClub.Tag + "'. Update this manually on the Nadeo club page if needed.");
+        }
+        if (config.HasKey("clubDescription")) {
+            string desc = JsonGetString(config, "clubDescription");
+            if (desc != State::SelectedClub.Description)
+                Log("Note: Config club description differs from current. Update this manually on the Nadeo club page if needed.");
         }
 
         // 1. Discovery
@@ -576,7 +588,7 @@ namespace ConfigImporter {
             if (detail !is null) {
                 act.UpdateFromDetail(JsonDeepExtract(detail));
                 trace("[Importer] Loaded details for " + act.Name + " (Mirror ID: " + act.MirrorCampaignId + ")");
-            } else {
+            } else if (act.Type != "folder") {
                 warn("[Importer] Failed to load details for " + act.Name + " (Type: " + act.Type + " | ID: " + act.Id + " | Room ID: " + act.RoomId + ")");
             }
         }

@@ -48,6 +48,14 @@ namespace Subscriptions {
         return null;
     }
 
+    Subscription@[] GetByClub(uint clubId) {
+        Subscription@[] result;
+        for (uint i = 0; i < All.Length; i++) {
+            if (All[i].ClubId == clubId) result.InsertLast(All[i]);
+        }
+        return result;
+    }
+
     void Add(Subscription@ sub) {
         if (sub.ActivityId == 0) return;
         if (sub.ClubId == 0 && State::SelectedClub !is null) sub.ClubId = State::SelectedClub.Id;
