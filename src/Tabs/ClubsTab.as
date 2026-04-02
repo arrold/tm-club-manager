@@ -1,5 +1,32 @@
 // Tabs/ClubsTab.as - Club Management & Branding View
 
+string FormatJson(Json::Value@ val, const string &in indent = "") {
+    if (val is null) return "null";
+    string next = indent + "  ";
+    Json::Type type = val.GetType();
+    if (type == Json::Type::Object) {
+        string[] keys = val.GetKeys();
+        if (keys.Length == 0) return "{}";
+        string r = "{\n";
+        for (uint i = 0; i < keys.Length; i++) {
+            r += next + "\"" + keys[i] + "\": " + FormatJson(val[keys[i]], next);
+            if (i < keys.Length - 1) r += ",";
+            r += "\n";
+        }
+        return r + indent + "}";
+    } else if (type == Json::Type::Array) {
+        if (val.Length == 0) return "[]";
+        string r = "[\n";
+        for (uint i = 0; i < val.Length; i++) {
+            r += next + FormatJson(val[i], next);
+            if (i < val.Length - 1) r += ",";
+            r += "\n";
+        }
+        return r + indent + "]";
+    }
+    return Json::Write(val);
+}
+
 class ClubsTab : Tab {
     ClubsTab() {
         super("Clubs", Icons::BuildingO);
@@ -29,6 +56,7 @@ class ClubsTab : Tab {
                     State::clubPublic = State::SelectedClub.Public;
                     State::isInitialised = false;
                     State::bulkAuditComplete = false;
+                    @State::TargetActivity = null;
                     AuditCache::Init();
                     startnew(RefreshActivities);
                 }
@@ -54,6 +82,10 @@ class ClubsTab : Tab {
             }
             if (UI::BeginTabItem("General Settings")) {
                 RenderGeneralSettingsTab();
+                UI::EndTabItem();
+            }
+            if (UI::BeginTabItem("Club Overrides")) {
+                RenderClubOverridesTab();
                 UI::EndTabItem();
             }
             UI::EndTabBar();
@@ -561,6 +593,121 @@ class ClubsTab : Tab {
         }
     }
 
+    void RenderFilterSummary(Subscription@ sub, Activity@ a) {
+        if (sub.SourceType == 0) {
+            if (UI::TreeNode("Subscription Filter Summary##" + a.Id)) {
+                if (sub.Filters.CurrentPage > 1) UI::TextDisabled("Page: " + sub.Filters.CurrentPage);
+                if (sub.Filters.AuthorNames.Length > 0) UI::TextDisabled("Author(s): " + string::Join(sub.Filters.AuthorNames, ", "));
+                if (sub.Filters.Vehicle >= 0 && sub.Filters.Vehicle < int(TMX::VEHICLE_NAMES.Length))
+                    UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
+
+                if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
+                    UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary]);
+                if (sub.Filters.SortSecondary >= 0 && sub.Filters.SortSecondary < int(TMX::SORT_NAMES.Length))
+                    UI::TextDisabled("Secondary Sort: " + TMX::SORT_NAMES[sub.Filters.SortSecondary]);
+
+                if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
+                if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));
+
+                string diffList = "";
+                for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
+                if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
+
+                if (sub.Filters.RelativeDays > 0)
+                    UI::TextDisabled("Uploaded: last " + sub.Filters.RelativeDays + " days (rolling)");
+                else if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "")
+                    UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
+
+                if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)
+                    UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
+
+                if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
+                else if (sub.Filters.InTOTD == 0) UI::TextDisabled("Flag: Not TOTD");
+                if (sub.Filters.InCollection >= 0 && sub.Filters.InCollection < int(TMX::COLLECTION_NAMES.Length))
+                    UI::TextDisabled("Collection: " + TMX::COLLECTION_NAMES[sub.Filters.InCollection]);
+                if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
+                if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
+                UI::TextDisabled("Max Maps: " + sub.MapLimit);
+
+                UI::TreePop();
+            }
+        } else {
+            UI::TextDisabled("Using maps from Local List: " + sub.ListId);
+            UI::TextDisabled("Max Maps: " + sub.MapLimit);
+        }
+    }
+
+    void RenderJsonEditor(Activity@ a, Subscription@ sub) {
+        if (sub.SourceType != 0) return;
+
+        if (!a.IsEditingJson) {
+            if (UI::Button(Icons::Pencil + " Edit Filters##jsonedit_" + a.Id)) {
+                a.JsonEditBuffer = FormatJson(sub.Filters.ToExportJson());
+                a.JsonEditError = "";
+                a.IsEditingJson = true;
+            }
+            return;
+        }
+
+        UI::Separator();
+        UI::TextDisabled("Edit subscription filters as JSON. Only include keys you want to change.");
+        a.JsonEditBuffer = UI::InputTextMultiline("##jsonbuf_" + a.Id, a.JsonEditBuffer, vec2(0, 140));
+
+        if (a.JsonEditError != "") {
+            UI::Text("\\$f44" + a.JsonEditError);
+        }
+
+        UI::PushStyleColor(UI::Col::Button, vec4(0.1f, 0.6f, 0.1f, 0.8f));
+        if (UI::Button(Icons::Check + " Save##jsonsave_" + a.Id)) {
+            string tmpPath = IO::FromStorageFolder("tmp_filter_edit.json");
+            IO::File f;
+            f.Open(tmpPath, IO::FileMode::Write);
+            f.Write(a.JsonEditBuffer);
+            f.Close();
+            Json::Value@ parsed = IO::FileExists(tmpPath) ? Json::FromFile(tmpPath) : null;
+            if (parsed is null || parsed.GetType() != Json::Type::Object) {
+                a.JsonEditError = "Invalid JSON — could not parse. Check syntax and try again.";
+            } else {
+                @sub.Filters = TmxSearchFilters(parsed);
+                Subscriptions::Save();
+                a.IsEditingJson = false;
+                a.JsonEditBuffer = "";
+                a.JsonEditError = "";
+                a.AuditDone = false;
+                UI::ShowNotification("Club Manager", "Filters updated for " + a.Name + ". Re-audit to see the new results.");
+            }
+        }
+        UI::PopStyleColor();
+        UI::SameLine();
+        if (UI::Button(Icons::Times + " Cancel##jsoncancel_" + a.Id)) {
+            a.IsEditingJson = false;
+            a.JsonEditBuffer = "";
+            a.JsonEditError = "";
+        }
+
+        if (UI::TreeNode("Filter Key Reference##jsonref_" + a.Id)) {
+            UI::TextDisabled("PrimarySort / SecondarySort:");
+            string sortList = "";
+            for (uint i = 0; i < TMX::SORT_NAMES.Length; i++) sortList += (i > 0 ? ", " : "") + TMX::SORT_NAMES[i];
+            UI::TextDisabled("  " + sortList);
+            UI::TextDisabled("Difficulties (JSON array of strings):");
+            string diffList = "";
+            for (uint i = 0; i < TMX::DIFFICULTY_NAMES.Length; i++) diffList += (i > 0 ? ", " : "") + TMX::DIFFICULTY_NAMES[i];
+            UI::TextDisabled("  " + diffList);
+            UI::TextDisabled("InTOTD: -1 (any), 0 (Not TOTD), 1 (TOTD Only)");
+            UI::TextDisabled("InCollection: -1 (any), 0 (TrackOfTheDay), 1 (ManiaClub)");
+            UI::TextDisabled("IncludeTags / ExcludeTags: JSON array of tag name strings");
+            UI::TextDisabled("Authors: comma-separated string  |  MapName: string");
+            UI::TextDisabled("MapLimit: integer (default 25)");
+            UI::TextDisabled("RelativeDays: integer (0=off, >0=rolling upload window)");
+            UI::TextDisabled("AuthorTimeRange: { \"Min\": <ms>, \"Max\": <ms> }");
+            UI::TextDisabled("UploadDateRange: { \"From\": \"YYYY-MM-DD\", \"To\": \"YYYY-MM-DD\" }");
+            UI::TextDisabled("ForcedIncludes: JSON array of map UIDs — always included regardless of filters");
+            UI::TreePop();
+        }
+        UI::Separator();
+    }
+
     bool showAuditDetails = false;
     void RenderAuditSubscription(Activity@ a) {
         Subscription@ sub = Subscriptions::GetByActivity(a.Id);
@@ -570,47 +717,11 @@ class ClubsTab : Tab {
 
         if (a.IsAuditing) {
             UI::Text("\\$888" + Icons::Spinner + " Auditing TMX...");
-        } else if (a.AuditDone) {
-            // Display Filter Summary for context
-            if (sub.SourceType == 0) {
-                if (UI::TreeNode("Subscription Filter Summary##" + a.Id)) {
-                    if (sub.Filters.CurrentPage > 1) UI::TextDisabled("Page: " + sub.Filters.CurrentPage);
-                    if (sub.Filters.AuthorNames.Length > 0) UI::TextDisabled("Author(s): " + string::Join(sub.Filters.AuthorNames, ", "));
-                    if (sub.Filters.Vehicle >= 0 && sub.Filters.Vehicle < int(TMX::VEHICLE_NAMES.Length)) 
-                        UI::TextDisabled("Vehicle: " + TMX::VEHICLE_NAMES[sub.Filters.Vehicle]);
-                    
-                    if (sub.Filters.SortPrimary >= 0 && sub.Filters.SortPrimary < int(TMX::SORT_NAMES.Length))
-                        UI::TextDisabled("Sort: " + TMX::SORT_NAMES[sub.Filters.SortPrimary]);
+        } else {
+            RenderFilterSummary(sub, a);
+            RenderJsonEditor(a, sub);
 
-                    if (sub.Filters.IncludeTags.Length > 0) UI::TextDisabled("Include: " + string::Join(sub.Filters.IncludeTags, ", "));
-                    if (sub.Filters.ExcludeTags.Length > 0) UI::TextDisabled("Exclude: " + string::Join(sub.Filters.ExcludeTags, ", "));
-                    
-                    string diffList = "";
-                    for (uint i = 0; i < sub.Filters.Difficulties.Length; i++) if (sub.Filters.Difficulties[i]) diffList += TMX::DIFFICULTY_NAMES[i] + ", ";
-                    if (diffList != "") UI::TextDisabled("Difficulty: " + diffList.SubStr(0, diffList.Length - 2));
-
-                    if (sub.Filters.RelativeDays > 0)
-                        UI::TextDisabled("Uploaded: last " + sub.Filters.RelativeDays + " days (rolling)");
-                    else if (sub.Filters.UploadedFrom != "" || sub.Filters.UploadedTo != "")
-                        UI::TextDisabled("Uploaded: " + (sub.Filters.UploadedFrom == "" ? "Start" : sub.Filters.UploadedFrom) + " to " + (sub.Filters.UploadedTo == "" ? "Now" : sub.Filters.UploadedTo));
-                    
-                    if (sub.Filters.TimeFromMs > 0 || sub.Filters.TimeToMs > 0)
-                        UI::TextDisabled("Time: " + Time::Format(sub.Filters.TimeFromMs) + " to " + Time::Format(sub.Filters.TimeToMs));
-
-                    if (sub.Filters.InTOTD == 1) UI::TextDisabled("Flag: TOTD Only");
-                    if (sub.Filters.InCollection >= 0 && sub.Filters.InCollection < int(TMX::COLLECTION_NAMES.Length))
-                        UI::TextDisabled("Collection: " + TMX::COLLECTION_NAMES[sub.Filters.InCollection]);
-                    if (sub.Filters.PrimaryTagOnly) UI::TextDisabled("Flag: Primary Tag Only");
-                    if (sub.Filters.PrimarySurfaceOnly) UI::TextDisabled("Flag: Primary Surface Only");
-                    UI::TextDisabled("Max Maps: " + sub.MapLimit);
-
-                    UI::TreePop();
-                }
-            } else {
-                UI::TextDisabled("Using maps from Local List: " + sub.ListId);
-                UI::TextDisabled("Max Maps: " + sub.MapLimit);
-            }
-
+            if (a.AuditDone) {
             bool hasChanges = a.AuditAdded.Length > 0 || a.AuditRemoved.Length > 0 || a.AuditOrderMismatch;
             
             if (!hasChanges) {
@@ -670,12 +781,13 @@ class ClubsTab : Tab {
                     }
                 }
             }
-        } else {
-            if (UI::Button(Icons::Search + " Audit Now")) startnew(DoAuditSubscription, a);
-            UI::SameLine();
-            if (UI::Button(Icons::Trash + " Remove Subscription")) {
-                Subscriptions::Remove(a.Id);
-                UI::ShowNotification("Club Manager", "Subscription removed for " + a.Name);
+            } else {
+                if (UI::Button(Icons::Search + " Audit Now")) startnew(DoAuditSubscription, a);
+                UI::SameLine();
+                if (UI::Button(Icons::Trash + " Remove Subscription")) {
+                    Subscriptions::Remove(a.Id);
+                    UI::ShowNotification("Club Manager", "Subscription removed for " + a.Name);
+                }
             }
         }
     }
@@ -715,6 +827,99 @@ class ClubsTab : Tab {
         UI::Separator();
         if (UI::Button(Icons::FloppyO + " Update Settings")) startnew(DoUpdateBranding, null);
     }
+
+    void RenderClubOverridesTab() {
+        if (State::SelectedClub is null) return;
+        uint clubId = State::SelectedClub.Id;
+        string key = tostring(clubId);
+
+        UI::Text("\\$f80" + Icons::BuildingO + "\\$z Club-Specific Overrides");
+        UI::TextDisabled("Difficulty overrides that apply only within this club.");
+        UI::TextDisabled("Right-click a map in audit results to set an override for this club.");
+        UI::SameLine();
+        if (UI::Button(Icons::Refresh + " Sync Metadata##clubsync")) {
+            startnew(SyncClubOverrides);
+        }
+        if (UI::IsItemHovered()) UI::SetTooltip("Re-fetch TMX data for all club overrides (updates award/download counts for sorting)");
+        UI::Separator();
+
+        ClubOverrides::Load();
+        if (!ClubOverrides::data.HasKey(key) || ClubOverrides::data[key].GetKeys().Length == 0) {
+            UI::TextDisabled("No per-club overrides set for " + State::SelectedClub.Name + ".");
+            return;
+        }
+
+        if (UI::BeginTable("ClubOverridesTable", 5, UI::TableFlags::Resizable | UI::TableFlags::RowBg | UI::TableFlags::Borders)) {
+            UI::TableSetupColumn("Map Name", UI::TableColumnFlags::WidthStretch);
+            UI::TableSetupColumn("UID", UI::TableColumnFlags::WidthFixed, 200);
+            UI::TableSetupColumn("Difficulty", UI::TableColumnFlags::WidthFixed, 120);
+            UI::TableSetupColumn("Cached", UI::TableColumnFlags::WidthFixed, 50);
+            UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 110);
+            UI::TableHeadersRow();
+
+            string[] uids = ClubOverrides::data[key].GetKeys();
+            for (uint i = 0; i < uids.Length; i++) {
+                string uid = uids[i];
+                Json::Value@ ovr = ClubOverrides::data[key][uid];
+                UI::TableNextRow();
+                UI::TableNextColumn();
+                if (AuditCache::IsKnown(uid)) {
+                    UI::Text(AuditCache::GetName(uid));
+                } else {
+                    UI::TextDisabled(AuditCache::GetName(uid));
+                    AuditCache::TriggerEagerLoad(uid);
+                }
+                UI::TableNextColumn();
+                UI::Text(uid);
+                UI::TableNextColumn();
+                UI::Text(ovr.HasKey("DifficultyName") ? string(ovr["DifficultyName"]) : "-");
+                UI::TableNextColumn();
+                UI::Text(ovr.HasKey("MapData") ? "\\$8f8" + Icons::Check : "\\$f44" + Icons::Times);
+                if (UI::IsItemHovered()) UI::SetTooltip(ovr.HasKey("MapData") ? "Map metadata cached — smart-include active" : "No metadata — set override again or Sync to enable smart-include");
+                UI::TableNextColumn();
+                // Pin to campaign button
+                if (UI::Button(Icons::MapMarker + "##clpin_" + i)) UI::OpenPopup("PinPopup_" + uid);
+                if (UI::IsItemHovered()) UI::SetTooltip("Force-pin to a campaign");
+                if (UI::BeginPopup("PinPopup_" + uid)) {
+                    UI::TextDisabled("Pin to campaign:");
+                    UI::Separator();
+                    Subscription@[] subs = Subscriptions::GetByClub(clubId);
+                    if (subs.Length == 0) {
+                        UI::TextDisabled("No subscriptions in this club.");
+                    }
+                    for (uint s = 0; s < subs.Length; s++) {
+                        bool alreadyPinned = subs[s].ForcedIncludes.Find(uid) >= 0;
+                        if (alreadyPinned) {
+                            if (UI::MenuItem(Icons::Check + " " + subs[s].ActivityName + "##unpin_" + s)) {
+                                int idx = subs[s].ForcedIncludes.Find(uid);
+                                if (idx >= 0) subs[s].ForcedIncludes.RemoveAt(idx);
+                                Subscriptions::Save();
+                            }
+                            if (UI::IsItemHovered()) UI::SetTooltip("Click to unpin");
+                        } else {
+                            if (UI::MenuItem(subs[s].ActivityName + "##pin_" + s)) {
+                                subs[s].ForcedIncludes.InsertLast(uid);
+                                Subscriptions::Save();
+                                UI::ShowNotification("Club Manager", uid.SubStr(0, 8) + "... pinned to " + subs[s].ActivityName);
+                            }
+                        }
+                    }
+                    UI::EndPopup();
+                }
+                UI::SameLine();
+                if (UI::Button(Icons::Refresh + "##clres_" + i)) {
+                    ClubOverrides::Reset(clubId, uid);
+                }
+                if (UI::IsItemHovered()) UI::SetTooltip("Reset Club Override");
+            }
+            UI::EndTable();
+        }
+    }
+}
+
+void SyncClubOverrides() {
+    if (State::SelectedClub is null) return;
+    ClubOverrides::SyncMapData(State::SelectedClub.Id);
 }
 
 void RunImportFlow() {

@@ -51,15 +51,82 @@ namespace MetadataOverrides {
         UI::ShowNotification("Metadata Reset", "Map " + map.Name + " reset. Performance search refresh to see TMX defaults.");
     }
 
-    void SetDifficulty(const string &in uid, int difficulty) {
+    void SetDifficulty(const string &in uid, int difficulty, TmxMap@ map = null) {
         Load();
         if (!data.HasKey(uid)) data[uid] = Json::Object();
         data[uid]["Difficulty"] = difficulty;
-        // Also sync DifficultyName for consistency
-        if (difficulty > 0 && difficulty <= int(TMX::SORT_NAMES.Length)) {
+        if (difficulty > 0 && difficulty <= int(TMX::DIFFICULTY_NAMES.Length)) {
             data[uid]["DifficultyName"] = TMX::DIFFICULTY_NAMES[difficulty - 1];
         }
+        if (map !is null) {
+            data[uid]["IsTOTD"] = map.IsTOTD;
+            data[uid]["MapData"] = map.ToJson();
+        }
         Save();
+        // Fire a background lookup to correct IsTOTD from the API
+        State::pendingTotdSyncUid = uid;
+        startnew(UpdateTotdForNewOverride);
+    }
+
+    void UpdateTotdForNewOverride() {
+        string uid = State::pendingTotdSyncUid;
+        if (uid == "") return;
+        string[] uids = { uid };
+        TmxMap@[] maps = TMX::GetMapsByUids(uids);
+        SupplementLengths(maps);
+        if (maps.Length > 0) {
+            Load();
+            if (data.HasKey(uid)) {
+                data[uid]["IsTOTD"] = maps[0].IsTOTD;
+                if (data[uid].HasKey("MapData")) data[uid]["MapData"] = maps[0].ToJson();
+                Save();
+            }
+        }
+    }
+
+    // Fills in LengthSecs for any maps where TMX returned 0, using the Nadeo authorScore field.
+    void SupplementLengths(TmxMap@[]@ maps) {
+        string[] missing;
+        for (uint i = 0; i < maps.Length; i++) {
+            if (maps[i].LengthSecs == 0) missing.InsertLast(maps[i].Uid);
+        }
+        if (missing.Length == 0) return;
+
+        while (!NadeoServices::IsAuthenticated("NadeoLiveServices")) yield();
+        Json::Value@ resp = API::GetMapsInfo(missing);
+        if (resp is null) return;
+        Json::Value@ list = null;
+        if (resp.GetType() == Json::Type::Array) @list = resp;
+        else if (resp.HasKey("mapList")) @list = resp["mapList"];
+        if (list is null) return;
+
+        for (uint i = 0; i < list.Length; i++) {
+            string nadeoUid = JsonGetString(list[i], "uid");
+            uint score = JsonGetUint(list[i], "authorTime");
+            if (nadeoUid == "" || score == 0) continue;
+            for (uint j = 0; j < maps.Length; j++) {
+                if (maps[j].Uid == nadeoUid && maps[j].LengthSecs == 0) {
+                    maps[j].LengthSecs = score / 1000;
+                    break;
+                }
+            }
+        }
+    }
+
+    void StoreMapData(const string &in uid, TmxMap@ map) {
+        Load();
+        if (!data.HasKey(uid)) return; // Only store if override already exists
+        data[uid]["MapData"] = map.ToJson();
+        Save();
+    }
+
+    TmxMap@ GetCachedMap(const string &in uid) {
+        Load();
+        if (!data.HasKey(uid) || !data[uid].HasKey("MapData")) return null;
+        TmxMap@ map = TmxMap(data[uid]["MapData"]);
+        // Prefer top-level IsTOTD (set at override time) over whatever is in MapData
+        map.IsTOTD = JsonGetBool(data[uid], "IsTOTD", map.IsTOTD);
+        return map;
     }
 
     void SetName(const string &in uid, const string &in name) {
@@ -107,11 +174,51 @@ namespace MetadataOverrides {
         Save();
     }
 
+    // Returns all UIDs that have a difficulty override AND cached map data
+    string[] GetUidsWithCachedMap() {
+        Load();
+        string[] result;
+        string[] uids = data.GetKeys();
+        for (uint i = 0; i < uids.Length; i++) {
+            if (data[uids[i]].HasKey("Difficulty") && data[uids[i]].HasKey("MapData")) {
+                result.InsertLast(uids[i]);
+            }
+        }
+        return result;
+    }
+
+    void SyncMapData() {
+        Load();
+        string[] uids = data.GetKeys();
+        string[] toSync;
+        for (uint i = 0; i < uids.Length; i++) {
+            if (data[uids[i]].HasKey("Difficulty")) toSync.InsertLast(uids[i]);
+        }
+        if (toSync.Length == 0) { Notify("No global overrides to sync."); return; }
+        Notify("Syncing metadata for " + toSync.Length + " global override(s)...");
+        uint synced = 0;
+        for (uint i = 0; i < toSync.Length; i += 10) {
+            string[] batch;
+            for (uint j = i; j < i + 10 && j < toSync.Length; j++) batch.InsertLast(toSync[j]);
+            TmxMap@[] maps = TMX::GetMapsByUids(batch);
+            SupplementLengths(maps);
+            for (uint j = 0; j < maps.Length; j++) {
+                if (data.HasKey(maps[j].Uid)) {
+                    data[maps[j].Uid]["MapData"] = maps[j].ToJson();
+                    synced++;
+                }
+            }
+            yield();
+        }
+        Save();
+        Notify("Global override metadata synced: " + synced + "/" + toSync.Length + " maps updated.");
+    }
+
     void Intercept(TmxMap@ map) {
         if (map is null || map.Uid == "") return;
         Load();
-        if (!data.HasKey(map.Uid)) return;
 
+        if (data.HasKey(map.Uid)) {
         Json::Value@ override = data[map.Uid];
         if (override.HasKey("Name")) {
             map.Name = string(override["Name"]);
@@ -136,6 +243,16 @@ namespace MetadataOverrides {
                 }
             }
         }
+        } // end global override block
+
+        // Layer club-specific override on top of global (club always wins)
+        if (State::SelectedClub !is null) {
+            Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, map.Uid);
+            if (clubOvr !is null) {
+                if (clubOvr.HasKey("Difficulty")) map.Difficulty = int(clubOvr["Difficulty"]);
+                if (clubOvr.HasKey("DifficultyName")) map.DifficultyName = string(clubOvr["DifficultyName"]);
+            }
+        }
     }
 
     void RenderOverrideMenu(TmxMap@ map) {
@@ -147,13 +264,34 @@ namespace MetadataOverrides {
                 for (uint d = 0; d < TMX::DIFFICULTY_NAMES.Length; d++) {
                     bool selected = map.Difficulty == int(d + 1);
                     if (UI::MenuItem(TMX::DIFFICULTY_NAMES[d], "", selected)) {
-                        SetDifficulty(map.Uid, d + 1);
-                        SetName(map.Uid, map.Name); // Ensure name is stored when editing Difficulty
+                        SetDifficulty(map.Uid, d + 1, map);
+                        SetName(map.Uid, map.Name);
                         map.Difficulty = d + 1;
                         map.DifficultyName = TMX::DIFFICULTY_NAMES[d];
                     }
                 }
                 UI::EndMenu();
+            }
+
+            if (State::SelectedClub !is null) {
+                if (UI::BeginMenu(Icons::BuildingO + " Override for " + State::SelectedClub.Name)) {
+                    UI::TextDisabled("Club-Specific Difficulty");
+                    UI::Separator();
+                    for (uint d = 0; d < TMX::DIFFICULTY_NAMES.Length; d++) {
+                        Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, map.Uid);
+                        bool selected = clubOvr !is null && clubOvr.HasKey("Difficulty") && int(clubOvr["Difficulty"]) == int(d + 1);
+                        if (UI::MenuItem(TMX::DIFFICULTY_NAMES[d], "", selected)) {
+                            ClubOverrides::SetDifficulty(State::SelectedClub.Id, map.Uid, d + 1, map);
+                            map.Difficulty = d + 1;
+                            map.DifficultyName = TMX::DIFFICULTY_NAMES[d];
+                        }
+                    }
+                    UI::Separator();
+                    if (UI::MenuItem(Icons::Refresh + " Reset Club Override")) {
+                        ClubOverrides::Reset(State::SelectedClub.Id, map.Uid);
+                    }
+                    UI::EndMenu();
+                }
             }
 
             if (UI::BeginMenu(Icons::Tag + " Set Primary Surface")) {

@@ -14,6 +14,7 @@ void Main() {
     Subscriptions::Load();
     CustomLists::Load();
     MetadataOverrides::Load();
+    ClubOverrides::Load();
     AuditCache::Init();
     startnew(MetadataOverrides::SyncAllNames);
     

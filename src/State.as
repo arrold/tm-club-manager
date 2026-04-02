@@ -39,6 +39,10 @@ namespace State {
     bool refreshingLocalMaps = false;
     uint localMapsCount = 0;
 
+    // Pending TOTD sync (staged here to avoid passing strings via ref@ in startnew)
+    string pendingTotdSyncUid = "";
+    uint pendingTotdSyncClubId = 0;
+
     // Modal Buffers (Avoid passing strings/arrays via ref@ in startnew)
     string nextActivityName = "New Folder";
     bool nextActivityActive = true;

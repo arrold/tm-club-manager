@@ -517,15 +517,23 @@ void DoAuditSubscription(ref@ r) {
         results = filtered;
     } else { // TMX Search
         // Denylist is handled inside FetchMapsSequential -> FilterTmxResults
-        results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true);
+        // For page 2+, shift the TMX skip count back by the number of smart-includes that
+        // were injected into earlier pages, so bumped maps aren't lost in the gap.
+        int priorSmart = (sub.Filters.CurrentPage > 1) ? CountMatchingSmartIncludes(sub.Filters) : 0;
+        results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true, priorSmart);
     }
 
-    if (results.Length == 0) {
+    if (results.Length == 0 && sub.ForcedIncludes.Length == 0) {
         Notify("Audit failed: No maps found in source (" + (sub.SourceType == 1 ? "Local List: " + sub.ListId : "TMX Search") + ").");
         a.IsAuditing = false;
         return;
     }
-    
+
+    // --- Smart includes: override-cached maps that match subscription filters ---
+    if (sub.SourceType == 0) {
+        results = ApplySmartIncludes(results, sub.Filters, sub.MapLimit);
+    }
+
     // Calculate Diff
     for (uint i = 0; i < results.Length; i++) {
         if (i % 20 == 0) yield();
@@ -535,7 +543,7 @@ void DoAuditSubscription(ref@ r) {
         }
         if (!found) a.AuditAdded.InsertLast(results[i]);
     }
-    
+
     for (uint i = 0; i < a.Maps.Length; i++) {
         if (i % 20 == 0) yield();
         bool found = false;
@@ -554,10 +562,41 @@ void DoAuditSubscription(ref@ r) {
             }
         }
     }
-    
+
     // Store the full UID list for the Action step
     for (uint i = 0; i < results.Length; i++) a.AuditFullUidList.InsertLast(results[i].Uid);
-    
+
+    // --- Forced includes: pinned maps appended regardless of filters ---
+    for (uint i = 0; i < sub.ForcedIncludes.Length; i++) {
+        string uid = sub.ForcedIncludes[i];
+        bool alreadyIn = false;
+        for (uint j = 0; j < a.AuditFullUidList.Length; j++) {
+            if (a.AuditFullUidList[j] == uid) { alreadyIn = true; break; }
+        }
+        if (!alreadyIn) {
+            a.AuditFullUidList.InsertLast(uid);
+            // Try to surface a TmxMap for the audit detail display
+            TmxMap@ cached = null;
+            if (State::SelectedClub !is null) cached = ClubOverrides::GetCachedMap(State::SelectedClub.Id, uid);
+            if (cached is null) cached = MetadataOverrides::GetCachedMap(uid);
+            if (cached !is null) {
+                a.AuditAdded.InsertLast(cached);
+            } else {
+                // Create minimal placeholder so the audit display shows something
+                TmxMap@ placeholder = TmxMap();
+                placeholder.Uid = uid;
+                placeholder.Name = AuditCache::IsKnown(uid) ? AuditCache::GetName(uid) : uid;
+                a.AuditAdded.InsertLast(placeholder);
+            }
+        }
+        // Remove from AuditRemoved if it was there
+        MapInfo@[] kept;
+        for (uint j = 0; j < a.AuditRemoved.Length; j++) {
+            if (a.AuditRemoved[j].Uid != uid) kept.InsertLast(a.AuditRemoved[j]);
+        }
+        a.AuditRemoved = kept;
+    }
+
     a.AuditDone = true;
     a.IsAuditing = false;
     Notify("Audit complete for " + a.Name + ". Review the proposed changes.");

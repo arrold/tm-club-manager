@@ -7,13 +7,14 @@
  * last filtered entry — so client-side filtering (denylist, difficulty override) never
  * causes the same page to be re-fetched.
  */
-TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true) {
+TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true, int priorSmartIncludes = 0) {
     if (f.AuthorNames.Length > 1) {
-        return FetchMultiAuthor(f, limit, applyOffset, useCache);
+        return FetchMultiAuthor(f, limit, applyOffset, useCache, priorSmartIncludes);
     }
 
     TmxMap@[] allResults;
-    uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
+    int rawSkip = (applyOffset && f.CurrentPage > 1) ? int((f.CurrentPage - 1) * limit) - priorSmartIncludes : 0;
+    uint skipCount = rawSkip > 0 ? uint(rawSkip) : 0;
     uint totalNeeded = skipCount + limit;
     
     uint offset = 0; 
@@ -65,7 +66,7 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
 
         if (allResults.Length >= targetLength) break;
         if (fetchedCount < int(batchSize)) break;
-        if (json.HasKey("More") && !bool(json["More"])) break;
+        if (!JsonGetBool(json, "More", true)) break;
 
         // Safety: If we've searched multiple pages and found ZERO matches for a specific author,
         // the server's author filter is almost certainly failing/ignored.
@@ -99,9 +100,10 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
     return pageResults;
 }
 
-TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bool useCache) {
+TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bool useCache, int priorSmartIncludes = 0) {
     TmxMap@[] merged;
-    uint skipCount = (applyOffset && f.CurrentPage > 1) ? (f.CurrentPage - 1) * limit : 0;
+    int rawSkip = (applyOffset && f.CurrentPage > 1) ? int((f.CurrentPage - 1) * limit) - priorSmartIncludes : 0;
+    uint skipCount = rawSkip > 0 ? uint(rawSkip) : 0;
     // Fetch a bit more per author to ensure better sorting of the merged list
     uint totalNeeded = Math::Max(skipCount + limit, uint(100)); 
     
@@ -127,7 +129,7 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
             for (uint j = 0; j < batch.Length; j++) authorResults.InsertLast(batch[j]);
             
             if (fetchedCount < int(batchSize)) break;
-            if (json.HasKey("More") && !bool(json["More"])) break;
+            if (!JsonGetBool(json, "More", true)) break;
 
             if (batch.Length > 0) {
                 lastId = batch[batch.Length - 1].TrackId;
@@ -237,6 +239,7 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
         if (i % 10 == 0) yield(); // Yield to prevent UI hang during large JSON processing
         TmxMap m(results[i]);
         if (m.Uid == "") continue;
+        if (f.InTOTD == 1) m.IsTOTD = true;
         if (Denylist::IsExcluded(m.Uid)) continue;
 
         // Author filter (handles collaborations and tags)
@@ -345,6 +348,227 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
     return filtered;
 }
 
+// Check whether a cached TmxMap passes the subscription's non-difficulty filters locally.
+// Difficulty is intentionally skipped — the caller has already resolved the effective difficulty.
+bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
+    if (map is null) return false;
+
+    // Map name substring match
+    if (f.MapName != "" && map.Name.ToLower().Contains(f.MapName.ToLower()) == false) return false;
+
+    // Author filter
+    if (f.AuthorNames.Length > 0) {
+        bool authorMatch = false;
+        for (uint i = 0; i < f.AuthorNames.Length; i++) {
+            for (uint j = 0; j < map.Authors.Length; j++) {
+                if (map.Authors[j].ToLower().Contains(f.AuthorNames[i].ToLower())) { authorMatch = true; break; }
+            }
+            if (authorMatch) break;
+        }
+        if (!authorMatch) return false;
+    }
+
+    // Include tags: map must have at least one
+    if (f.IncludeTags.Length > 0) {
+        bool hasInclude = false;
+        for (uint i = 0; i < f.IncludeTags.Length; i++) {
+            if (map.Tags.Find(f.IncludeTags[i]) >= 0) { hasInclude = true; break; }
+        }
+        if (!hasInclude) return false;
+    }
+
+    // Exclude tags: map must have none
+    for (uint i = 0; i < f.ExcludeTags.Length; i++) {
+        if (map.Tags.Find(f.ExcludeTags[i]) >= 0) return false;
+    }
+
+    // Author time range (LengthSecs * 1000 = ms)
+    // If a time filter is active and length is unknown, reject conservatively.
+    uint authorMs = map.LengthSecs * 1000;
+    if ((f.TimeFromMs > 0 || f.TimeToMs > 0) && authorMs == 0) return false;
+    if (f.TimeFromMs > 0 && authorMs < f.TimeFromMs) return false;
+    if (f.TimeToMs > 0 && authorMs > f.TimeToMs) return false;
+
+    // Upload date range.
+    // map.UploadedAt is ISO (yyyy-MM-dd...), filter dates are stored as dd/MM/yyyy —
+    // convert filter dates via TMX::FormatDate before comparing.
+    // If the filter has a date constraint and the cached map has no UploadedAt, reject conservatively.
+    if (f.RelativeDays > 0) {
+        if (map.UploadedAt == "") return false;
+        string cutoff = TMX::DateDaysAgo(f.RelativeDays);
+        if (map.UploadedAt < cutoff) return false;
+    } else {
+        if (f.UploadedFrom != "" || f.UploadedTo != "") {
+            if (map.UploadedAt == "") return false;
+        }
+        if (f.UploadedFrom != "") {
+            string isoFrom = TMX::FormatDate(f.UploadedFrom);
+            if (map.UploadedAt < isoFrom) return false;
+        }
+        if (f.UploadedTo != "") {
+            string isoTo = TMX::FormatDate(f.UploadedTo);
+            if (map.UploadedAt > isoTo) return false;
+        }
+    }
+
+    // TOTD status: only inject maps that match the TOTD filter.
+    // IsTOTD defaults to false, so TOTD-only (InTOTD==1) subscriptions will reject
+    // any smart-include whose cached MapData doesn't confirm it as TOTD — which is the
+    // safe behaviour: if the map truly is TOTD with a difficulty override, re-sync its
+    // metadata (via the Sync button) so IsTOTD gets stored.
+    if (f.InTOTD == 1 && !map.IsTOTD) return false;
+    if (f.InTOTD == 0 && map.IsTOTD) return false;
+
+    return true;
+}
+
+// Merge smart-include maps into TMX results and re-sort by the primary sort field.
+// smart maps must not already be present in results (caller guarantees dedup).
+TmxMap@[] MergeAndSort(TmxMap@[]@ results, TmxMap@[]@ smartMaps, int sortPrimary) {
+    TmxMap@[] merged;
+    for (uint i = 0; i < results.Length; i++) merged.InsertLast(results[i]);
+    for (uint i = 0; i < smartMaps.Length; i++) merged.InsertLast(smartMaps[i]);
+
+    if (sortPrimary < 0 || merged.Length < 2) return merged;
+
+    // Bubble sort — small lists only (typically ≤ 25 + a handful of overrides)
+    for (uint i = 0; i < merged.Length - 1; i++) {
+        for (uint j = 0; j < merged.Length - i - 1; j++) {
+            bool swap = false;
+            switch (sortPrimary) {
+                case 0: swap = merged[j].AwardCount    < merged[j+1].AwardCount;    break; // Awards Most
+                case 1: swap = merged[j].AwardCount    > merged[j+1].AwardCount;    break; // Awards Least
+                case 2: swap = merged[j].UploadedAt    > merged[j+1].UploadedAt;    break; // Uploaded Oldest
+                case 3: swap = merged[j].DownloadCount < merged[j+1].DownloadCount; break; // Downloads Most
+                case 4: swap = merged[j].DownloadCount > merged[j+1].DownloadCount; break; // Downloads Least
+                case 5: swap = merged[j].UploadedAt    < merged[j+1].UploadedAt;    break; // Uploaded Newest
+                case 6: swap = merged[j].Difficulty    > merged[j+1].Difficulty;    break; // Difficulty Easiest
+                case 7: swap = merged[j].Difficulty    < merged[j+1].Difficulty;    break; // Difficulty Hardest
+                case 8: swap = merged[j].Name          > merged[j+1].Name;          break; // Name A-Z
+                case 9: swap = merged[j].Name          < merged[j+1].Name;          break; // Name Z-A
+            }
+            if (swap) {
+                TmxMap@ tmp = merged[j];
+                @merged[j] = merged[j+1];
+                @merged[j+1] = tmp;
+            }
+        }
+    }
+    return merged;
+}
+
+// Count override-cached maps that match filters (no page boundary check).
+// Used to adjust the TMX skip count for page N > 1 so bumped maps aren't lost.
+int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
+    if (State::SelectedClub is null) return 0;
+    int count = 0;
+    dictionary seen;
+
+    string[] globalUids = MetadataOverrides::GetUidsWithCachedMap();
+    for (uint i = 0; i < globalUids.Length; i++) {
+        TmxMap@ cached = MetadataOverrides::GetCachedMap(globalUids[i]);
+        if (cached is null) continue;
+        int effectiveDiff = cached.Difficulty;
+        Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, globalUids[i]);
+        if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
+        int idx = effectiveDiff - 1;
+        bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
+        bool noDiffFilter = true;
+        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
+        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) {
+            count++;
+            seen[globalUids[i]] = true;
+        }
+    }
+
+    string[] clubUids = ClubOverrides::GetUidsWithCachedMap(State::SelectedClub.Id);
+    for (uint i = 0; i < clubUids.Length; i++) {
+        if (seen.Exists(clubUids[i])) continue;
+        TmxMap@ cached = ClubOverrides::GetCachedMap(State::SelectedClub.Id, clubUids[i]);
+        if (cached is null) continue;
+        Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, clubUids[i]);
+        int effectiveDiff = cached.Difficulty;
+        if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
+        int idx = effectiveDiff - 1;
+        bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
+        bool noDiffFilter = true;
+        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
+        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) count++;
+    }
+
+    return count;
+}
+
+// Collect override-cached maps that match the given filters and page context,
+// merge them into results, sort, and trim to pageLimit.
+// Safe to call from both audits and the live TMX search.
+TmxMap@[] ApplySmartIncludes(TmxMap@[]@ results, TmxSearchFilters@ f, uint pageLimit) {
+    if (State::SelectedClub is null) return results;
+
+    dictionary resultUids;
+    for (uint i = 0; i < results.Length; i++) resultUids[results[i].Uid] = true;
+
+    TmxMap@[] smartCandidates;
+    // For page 2+, skip override maps that sort better than the first result on this page —
+    // they would belong in an earlier page's campaign.
+    bool checkPageBoundary = (f.CurrentPage > 1 && results.Length > 0);
+
+    // Helper lambda: check difficulty filter
+    // (inline since AngelScript has no lambdas)
+
+    // Collect from global overrides
+    string[] globalUids = MetadataOverrides::GetUidsWithCachedMap();
+    for (uint i = 0; i < globalUids.Length; i++) {
+        if (resultUids.Exists(globalUids[i])) continue;
+        TmxMap@ cached = MetadataOverrides::GetCachedMap(globalUids[i]);
+        if (cached is null) continue;
+        int effectiveDiff = cached.Difficulty;
+        Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, globalUids[i]);
+        if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
+        int idx = effectiveDiff - 1;
+        bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
+        bool noDiffFilter = true;
+        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
+        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) {
+            if (checkPageBoundary && ShouldSwap(results[0], cached, f.SortPrimary)) continue;
+            smartCandidates.InsertLast(cached);
+            resultUids[cached.Uid] = true;
+        }
+    }
+
+    // Collect from club overrides (maps not already covered by global)
+    string[] clubUids = ClubOverrides::GetUidsWithCachedMap(State::SelectedClub.Id);
+    for (uint i = 0; i < clubUids.Length; i++) {
+        if (resultUids.Exists(clubUids[i])) continue;
+        TmxMap@ cached = ClubOverrides::GetCachedMap(State::SelectedClub.Id, clubUids[i]);
+        if (cached is null) continue;
+        Json::Value@ clubOvr = ClubOverrides::GetOverride(State::SelectedClub.Id, clubUids[i]);
+        int effectiveDiff = cached.Difficulty;
+        if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
+        int idx = effectiveDiff - 1;
+        bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
+        bool noDiffFilter = true;
+        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
+        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) {
+            if (checkPageBoundary && ShouldSwap(results[0], cached, f.SortPrimary)) continue;
+            smartCandidates.InsertLast(cached);
+            resultUids[cached.Uid] = true;
+        }
+    }
+
+    TmxMap@[] merged = results;
+    if (smartCandidates.Length > 0) {
+        merged = MergeAndSort(results, smartCandidates, f.SortPrimary);
+    }
+
+    // Trim to page limit (smart-includes must not cause the list to exceed capacity)
+    if (merged.Length > pageLimit) {
+        merged.RemoveRange(pageLimit, merged.Length - pageLimit);
+    }
+
+    return merged;
+}
+
 void StartFreshTmxSearch() {
     // Clears the browse cache so DoTmxSearch rebuilds rather than serving stale results.
     // Called by the Search button; Prev/Next call DoTmxSearch directly to preserve the cache.
@@ -364,14 +588,18 @@ void DoTmxSearch() {
 
         // Serve from cache if it covers this page (includes page 1 on Prev navigation).
         if (State::tmxBrowseCache.Length > startIdx) {
-            State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+            TmxMap@[] page;
             for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
-                State::tmxSearchResults.InsertLast(State::tmxBrowseCache[i]);
+                page.InsertLast(State::tmxBrowseCache[i]);
             }
-            if (State::tmxSearchResults.Length == 0) {
+            if (page.Length == 0) {
                 State::tmxFilters.CurrentPage = requestedPage - 1;
                 NotifyError("No more results in cache (100 maps fetched total).");
+            } else {
+                page = ApplySmartIncludes(page, f, pageSize);
             }
+            State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+            for (uint i = 0; i < page.Length; i++) State::tmxSearchResults.InsertLast(page[i]);
             State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
             for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
             return;
@@ -390,10 +618,13 @@ void DoTmxSearch() {
             for (uint i = 0; i < allMaps.Length; i++) State::tmxBrowseCache.InsertLast(allMaps[i]);
         }
 
-        State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+        TmxMap@[] page;
         for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
-            State::tmxSearchResults.InsertLast(State::tmxBrowseCache[i]);
+            page.InsertLast(State::tmxBrowseCache[i]);
         }
+        page = ApplySmartIncludes(page, f, pageSize);
+        State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
+        for (uint i = 0; i < page.Length; i++) State::tmxSearchResults.InsertLast(page[i]);
         State::tmxSelected.RemoveRange(0, State::tmxSelected.Length);
         for (uint i = 0; i < State::tmxSearchResults.Length; i++) State::tmxSelected.InsertLast(false);
 
@@ -404,7 +635,8 @@ void DoTmxSearch() {
     // Normal path.
     State::searchInProgress = true;
 
-    TmxMap@[] results = FetchMapsSequential(f, pageSize, true, false);
+    int priorSmart = (f.CurrentPage > 1) ? CountMatchingSmartIncludes(f) : 0;
+    TmxMap@[] results = FetchMapsSequential(f, pageSize, true, false, priorSmart);
 
     if (results.Length == 0 && requestedPage > 1) {
         State::tmxFilters.CurrentPage = requestedPage - 1;
@@ -412,6 +644,8 @@ void DoTmxSearch() {
         State::searchInProgress = false;
         return;
     }
+
+    results = ApplySmartIncludes(results, f, pageSize);
 
     State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
     for (uint i = 0; i < results.Length; i++) State::tmxSearchResults.InsertLast(results[i]);
