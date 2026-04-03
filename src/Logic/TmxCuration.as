@@ -459,8 +459,13 @@ TmxMap@[] MergeAndSort(TmxMap@[]@ results, TmxMap@[]@ smartMaps, int sortPrimary
 
 // Count override-cached maps that match filters (no page boundary check).
 // Used to adjust the TMX skip count for page N > 1 so bumped maps aren't lost.
+// Only relevant when a difficulty filter is active — without one, TMX already returns
+// the override maps naturally, so no skip adjustment is needed.
 int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
     if (State::SelectedClub is null) return 0;
+    bool noDiffFilter = true;
+    for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
+    if (noDiffFilter) return 0;
     int count = 0;
     dictionary seen;
 
