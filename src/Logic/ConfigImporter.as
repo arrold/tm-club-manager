@@ -3,6 +3,8 @@
 namespace ConfigImporter {
     bool isImporting = false;
     bool dryRun = false;
+    bool newCampaignsCreated = false; // Set when a campaign is freshly created; triggers propagation wait before rooms
+    string[] newlyCreatedCampaignNames; // Names of campaigns created in this import run (Nadeo API: empty campaigns cannot be room-linked)
     
     enum LogType { Info, Warning, Error }
     
@@ -55,7 +57,7 @@ namespace ConfigImporter {
 
         string ToLogString() {
             return "Summary: Folders: " + FoldersCreated + " Created, " + FoldersUpdated + " Updated, " + FoldersVerified + " Verified | " +
-                   "Activities: " + ActivitiesCreated + " Created, " + ActivitiesUpdated + " Updated, " + ActivitiesVerified + " Verified, " + ActivitiesDeleted + " Deleted | " +
+                   "Activities: " + ActivitiesCreated + " Created, " + ActivitiesUpdated + " Updated, " + ActivitiesVerified + " Verified | " +
                    "Subscriptions: " + SubscriptionsUpdated + " Updated | " +
                    "Warnings: " + Warnings + " | Errors: " + Errors;
         }
@@ -78,6 +80,7 @@ namespace ConfigImporter {
         keptIds.RemoveRange(0, keptIds.Length);
         pendingPositionIds.RemoveRange(0, pendingPositionIds.Length);
         pendingPositionValues.RemoveRange(0, pendingPositionValues.Length);
+        newlyCreatedCampaignNames.RemoveRange(0, newlyCreatedCampaignNames.Length);
         Log("Starting " + (dryRun ? "DRY RUN " : "") + "import for Club: " + State::SelectedClub.Name);
 
         // 0. Pre-flight Validation
@@ -115,8 +118,6 @@ namespace ConfigImporter {
         Activity@[] existing;
         uint clubId = State::SelectedClub.Id;
         FetchAllExisting(clubId, existing);
-        bool prune = JsonGetBool(config, "prune", false);
-        
         // 2. Process Folders first
         if (config.HasKey("folders") && config["folders"].GetType() == Json::Type::Array) {
             Json::Value@ folders = config["folders"];
@@ -132,18 +133,14 @@ namespace ConfigImporter {
             for (uint i = 0; i < activities.Length; i++) {
                 if (JsonGetString(activities[i], "type") == "campaign") ProcessActivity(activities[i], 0, existing, clubId);
             }
+            WaitForCampaignPropagation();
             // Second pass: Rooms & Others
             for (uint i = 0; i < activities.Length; i++) {
                 if (JsonGetString(activities[i], "type") != "campaign") ProcessActivity(activities[i], 0, existing, clubId);
             }
         }
 
-        // 4. Pruning (if enabled) — delete any club activity not referenced by the config.
-        if (prune) {
-            PruneUntouched(existing, clubId);
-        }
-
-        // 5. Two-pass position assignment — avoids conflicts when target positions are already occupied.
+        // 4. Two-pass position assignment — avoids conflicts when target positions are already occupied.
         if (!dryRun) ApplyPendingPositions(clubId);
 
         Log("Import complete.");
@@ -228,6 +225,7 @@ namespace ConfigImporter {
             for (uint i = 0; i < items.Length; i++) {
                 if (JsonGetString(items[i], "type") == "campaign") ProcessActivity(items[i], folderId, existing, clubId);
             }
+            WaitForCampaignPropagation();
             // Pass 2: Folders (Recursive)
             for (uint i = 0; i < items.Length; i++) {
                 if (JsonGetString(items[i], "type") == "folder") ProcessFolder(items[i], folderId, existing, clubId);
@@ -256,6 +254,19 @@ namespace ConfigImporter {
                 uint mirrorId = JsonGetUint(json, "mirrorCampaignId", 0);
                 string mirrorName = JsonGetString(json, "mirrorCampaignName");
                 if (mirrorName != "") {
+                    // Nadeo API limitation: a room cannot be linked to a campaign that has no maps yet.
+                    // If the mirror campaign was created in this same import run, it will be empty — skip
+                    // room creation and instruct the user to audit the campaign first.
+                    bool mirrorIsNew = false;
+                    for (uint i = 0; i < newlyCreatedCampaignNames.Length; i++) {
+                        if (newlyCreatedCampaignNames[i].ToLower() == mirrorName.ToLower()) { mirrorIsNew = true; break; }
+                    }
+                    if (mirrorIsNew) {
+                        Log("Skipped room '" + name + "': campaign '" + mirrorName + "' was just created and has no maps yet. " +
+                            "Audit the campaign to populate it, then re-run the importer to create this room.", LogType::Warning);
+                        currentDelta.Warnings++;
+                        return;
+                    }
                     mirrorId = FindCampaignIdByName(mirrorName, existing);
                     if (mirrorId == 0) Log("Warning: Could not find mirrored campaign '" + mirrorName + "' locally. Linking may fail.", LogType::Warning);
                     else Log("Resolved mirror '" + mirrorName + "' to ID: " + mirrorId);
@@ -276,10 +287,18 @@ namespace ConfigImporter {
                     }
                     
                     Log("Successfully created " + type + " '" + name + "' with ID: " + actId);
+                    if (type == "campaign") {
+                        newCampaignsCreated = true;
+                        newlyCreatedCampaignNames.InsertLast(name);
+                    }
 
                     // Add newly created activity to existing list so siblings can mirror it!
+                    // Explicitly set Name and Type from config — the API response structure may not
+                    // map cleanly through the Activity constructor, causing FindCampaignIdByName to miss it.
                     Activity@ newAct = Activity(activityJson);
-                    newAct.Id = actId; // Ensure Id matches the activity ID, not a resource sub-object ID
+                    newAct.Id = actId;
+                    newAct.Name = name;
+                    newAct.Type = type;
                     newAct.FolderId = folderId;
                     existing.InsertLast(newAct);
 
@@ -359,6 +378,16 @@ namespace ConfigImporter {
                 if (!dryRun) QueuePosition(actId, desiredPos);
             }
         }
+    }
+
+    // Waits 3 seconds if campaigns were freshly created, giving Nadeo time to propagate
+    // them before a room tries to link. Resets the flag after waiting.
+    void WaitForCampaignPropagation() {
+        if (!newCampaignsCreated || dryRun) return;
+        Log("Waiting for campaign propagation before creating linked rooms...");
+        uint64 start = Time::Now;
+        while (Time::Now - start < 3000) yield();
+        newCampaignsCreated = false;
     }
 
     void QueuePosition(uint actId, uint desiredPos) {
