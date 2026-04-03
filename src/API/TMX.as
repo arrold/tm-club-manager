@@ -168,9 +168,9 @@ namespace TMX {
  * - ExcludeTags: maps that MUST NOT have these tags.
  * Also implements guardrails for "Awards Most" sorting to prevent 500 errors on the TMX side.
  */
-    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "", int authorId = -1) {
+    Json::Value@ SearchMaps(TmxSearchFilters@ f, uint limit = 25, uint offset = 0, uint afterId = 0, bool useCache = true, const string &in authorOverride = "", int authorId = -1, int diffIdxOverride = -1) {
         string params = "fields=" + TMX_FIELDS + "&count=" + tostring(limit);
-        
+
         // Priority filters first for TMX V1 stability
         if (f.InTOTD == 1) params += "&intotd=1";
         else if (f.InTOTD == 0) params += "&intotd=0";
@@ -184,24 +184,29 @@ namespace TMX {
             params += "&author=" + Net::UrlEncode(author);
             params += "&anyauthor=1";
         }
-        
+
         if (f.MapName != "") params += "&name=" + Net::UrlEncode(f.MapName);
-        
+
         if (afterId > 0) params += "&after=" + tostring(afterId);
         if (offset > 0) params += "&skip=" + tostring(offset);
-        
-        // Selective difficulty: TMX only supports one value. If multiple are selected, 
-        // we omit it in the API and let FilterTmxResults handle it client-side.
-        uint selectedDiffCount = 0;
-        int singleDiffIdx = -1;
-        for (uint i = 0; i < f.Difficulties.Length; i++) {
-            if (f.Difficulties[i]) {
-                selectedDiffCount++;
-                singleDiffIdx = i;
+
+        // Difficulty: TMX only supports one value per request.
+        // diffIdxOverride is set by FetchMultiDifficulty when making per-difficulty calls.
+        // Otherwise use the filter's single selected difficulty, or omit entirely for multi-diff.
+        if (diffIdxOverride >= 0) {
+            params += "&difficulty=" + tostring(diffIdxOverride);
+        } else {
+            uint selectedDiffCount = 0;
+            int singleDiffIdx = -1;
+            for (uint i = 0; i < f.Difficulties.Length; i++) {
+                if (f.Difficulties[i]) {
+                    selectedDiffCount++;
+                    singleDiffIdx = i;
+                }
             }
-        }
-        if (selectedDiffCount == 1) {
-            params += "&difficulty=" + tostring(singleDiffIdx);
+            if (selectedDiffCount == 1) {
+                params += "&difficulty=" + tostring(singleDiffIdx);
+            }
         }
 
         if (f.TimeFromMs > 0) params += "&authortimemin=" + tostring(f.TimeFromMs);

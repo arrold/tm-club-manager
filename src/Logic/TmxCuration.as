@@ -12,6 +12,14 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         return FetchMultiAuthor(f, limit, applyOffset, useCache, priorSmartIncludes);
     }
 
+    // TMX only supports a single &difficulty= param. When 2+ difficulties are selected,
+    // make one API call per difficulty and merge client-side (same pattern as multi-author).
+    uint selectedDiffCount = 0;
+    for (uint i = 0; i < f.Difficulties.Length; i++) { if (f.Difficulties[i]) selectedDiffCount++; }
+    if (selectedDiffCount > 1) {
+        return FetchMultiDifficulty(f, limit, applyOffset, useCache, priorSmartIncludes);
+    }
+
     TmxMap@[] allResults;
     int rawSkip = (applyOffset && f.CurrentPage > 1) ? int((f.CurrentPage - 1) * limit) - priorSmartIncludes : 0;
     uint skipCount = rawSkip > 0 ? uint(rawSkip) : 0;
@@ -159,6 +167,69 @@ TmxMap@[] FetchMultiAuthor(TmxSearchFilters@ f, uint limit, bool applyOffset, bo
     
     if (f.AuthorNames.Length > 1) {
         Notify("Multi-Mapper Search: Aggregated " + merged.Length + " maps from " + f.AuthorNames.Length + " mappers.");
+    }
+    return pageResults;
+}
+
+TmxMap@[] FetchMultiDifficulty(TmxSearchFilters@ f, uint limit, bool applyOffset, bool useCache, int priorSmartIncludes = 0) {
+    TmxMap@[] merged;
+    int rawSkip = (applyOffset && f.CurrentPage > 1) ? int((f.CurrentPage - 1) * limit) - priorSmartIncludes : 0;
+    uint skipCount = rawSkip > 0 ? uint(rawSkip) : 0;
+    uint totalNeeded = Math::Max(skipCount + limit, uint(100));
+
+    dictionary seen;
+
+    // One API call per selected difficulty index so TMX applies a proper server-side filter.
+    // Results per difficulty are merged and sorted client-side before slicing.
+    for (uint diffIdx = 0; diffIdx < f.Difficulties.Length; diffIdx++) {
+        if (!f.Difficulties[diffIdx]) continue;
+
+        TmxMap@[] diffResults;
+        uint lastId = 0;
+        uint offset = 0;
+        uint batchSize = 50;
+        uint safetyLimit = 0;
+        const uint maxPages = 20;
+
+        while (diffResults.Length < totalNeeded && safetyLimit < maxPages) {
+            safetyLimit++;
+            Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache, "", -1, int(diffIdx));
+            if (json is null) break;
+
+            int fetchedCount = 0;
+            TmxMap@[] batch = FilterTmxResults(json, f, batchSize, fetchedCount);
+            for (uint j = 0; j < batch.Length; j++) diffResults.InsertLast(batch[j]);
+
+            if (fetchedCount < int(batchSize)) break;
+            if (!JsonGetBool(json, "More", true)) break;
+
+            if (batch.Length > 0) {
+                lastId = batch[batch.Length - 1].TrackId;
+                offset = 0;
+            } else {
+                offset += fetchedCount;
+            }
+            yield();
+        }
+
+        for (uint j = 0; j < diffResults.Length; j++) {
+            if (!seen.Exists(diffResults[j].Uid)) {
+                seen[diffResults[j].Uid] = true;
+                merged.InsertLast(diffResults[j]);
+            }
+        }
+    }
+
+    SortMaps(merged, f.SortPrimary, f.SortSecondary);
+    yield();
+
+    TmxMap@[] pageResults;
+    if (merged.Length > skipCount) {
+        uint pageLimit = skipCount + limit;
+        uint maxIdx = uint(Math::Min(int(merged.Length), int(pageLimit)));
+        for (uint i = skipCount; i < maxIdx; i++) {
+            pageResults.InsertLast(merged[i]);
+        }
     }
     return pageResults;
 }
@@ -463,9 +534,14 @@ TmxMap@[] MergeAndSort(TmxMap@[]@ results, TmxMap@[]@ smartMaps, int sortPrimary
 // the override maps naturally, so no skip adjustment is needed.
 int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
     if (State::SelectedClub is null) return 0;
-    bool noDiffFilter = true;
-    for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
-    if (noDiffFilter) return 0;
+
+    // Smart-includes only compensate for maps that TMX's server-side difficulty filter has excluded.
+    // TMX only supports a single difficulty value — when 0 or 2+ difficulties are selected, no server
+    // filter is applied and TMX already returns those maps naturally. No skip adjustment is needed.
+    uint selectedDiffCount = 0;
+    for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) selectedDiffCount++; }
+    if (selectedDiffCount != 1) return 0;
+
     int count = 0;
     dictionary seen;
 
@@ -478,9 +554,7 @@ int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
         if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
         int idx = effectiveDiff - 1;
         bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
-        bool noDiffFilter = true;
-        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
-        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) {
+        if (diffMatch && MatchesFiltersLocally(cached, f)) {
             count++;
             seen[globalUids[i]] = true;
         }
@@ -496,9 +570,7 @@ int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
         if (clubOvr !is null && clubOvr.HasKey("Difficulty")) effectiveDiff = int(clubOvr["Difficulty"]);
         int idx = effectiveDiff - 1;
         bool diffMatch = (idx >= 0 && idx < int(f.Difficulties.Length) && f.Difficulties[idx]);
-        bool noDiffFilter = true;
-        for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) { noDiffFilter = false; break; } }
-        if ((diffMatch || noDiffFilter) && MatchesFiltersLocally(cached, f)) count++;
+        if (diffMatch && MatchesFiltersLocally(cached, f)) count++;
     }
 
     return count;
