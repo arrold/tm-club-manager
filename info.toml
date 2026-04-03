@@ -2,7 +2,7 @@
 name = "Club Manager"
 author = "Arrold"
 category = "Tools"
-version = "0.0.7"
+version = "0.0.8"
 
 [script]
 dependencies = ["NadeoServices"]
