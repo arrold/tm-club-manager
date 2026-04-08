@@ -132,14 +132,10 @@ namespace TMX {
         switch (index) {
             case 0:  return 12; // Awards Most
             case 1:  return 11; // Awards Least
-            case 2:  return 5;  // Uploaded Oldest
-            case 3:  return 20; // Downloads Most
-            case 4:  return 19; // Downloads Least
-            case 5:  return 6;  // Uploaded Newest
-            case 6:  return 15; // Difficulty Easiest
-            case 7:  return 16; // Difficulty Hardest
-            case 8:  return 1;  // Name A-Z
-            case 9:  return 2;  // Name Z-A
+            case 2:  return 15; // Difficulty Easiest
+            case 3:  return 16; // Difficulty Hardest
+            case 4:  return 1;  // Name A-Z
+            case 5:  return 2;  // Name Z-A
         }
         return -1;
     }
@@ -341,11 +337,24 @@ namespace TMX {
             warn("[TMX] Failed to resolve UserId for: " + username);
             return -1;
         }
-        
-        Json::Value@ first = results[0];
+
+        // TMX's user search may treat '_' as a SQL wildcard, returning inexact matches.
+        // Prefer an exact case-insensitive match; fall back to the first result only if none found.
+        string lowerUsername = username.ToLower();
+        Json::Value@ best = null;
+        for (uint i = 0; i < results.Length; i++) {
+            Json::Value@ r = results[i];
+            string rName = "";
+            if (r.HasKey("username")) rName = string(r["username"]);
+            else if (r.HasKey("Username")) rName = string(r["Username"]);
+            else if (r.HasKey("name")) rName = string(r["name"]);
+            if (rName.ToLower() == lowerUsername) { @best = r; break; }
+        }
+        if (best is null) @best = results[0];
+
         int id = -1;
-        if (first.HasKey("id")) id = int(first["id"]);
-        else if (first.HasKey("UserID")) id = int(first["UserID"]);
+        if (best.HasKey("id")) id = int(best["id"]);
+        else if (best.HasKey("UserID")) id = int(best["UserID"]);
 
         if (id <= 0) {
             warn("[TMX] Resolved user but missing UserId field.");

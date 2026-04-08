@@ -102,7 +102,7 @@ namespace ConfigImporter {
             return;
         }
 
-        // Club tag / description are informational — cannot be set via API, must be changed on the Nadeo website.
+        // Club tag / description are informational - cannot be set via API, must be changed on the Nadeo website.
         if (config.HasKey("clubTag")) {
             string tag = JsonGetString(config, "clubTag");
             if (tag != State::SelectedClub.Tag)
@@ -140,7 +140,7 @@ namespace ConfigImporter {
             }
         }
 
-        // 4. Two-pass position assignment — avoids conflicts when target positions are already occupied.
+        // 4. Two-pass position assignment - avoids conflicts when target positions are already occupied.
         if (!dryRun) ApplyPendingPositions(clubId);
 
         Log("Import complete.");
@@ -255,7 +255,7 @@ namespace ConfigImporter {
                 string mirrorName = JsonGetString(json, "mirrorCampaignName");
                 if (mirrorName != "") {
                     // Nadeo API limitation: a room cannot be linked to a campaign that has no maps yet.
-                    // If the mirror campaign was created in this same import run, it will be empty — skip
+                    // If the mirror campaign was created in this same import run, it will be empty - skip
                     // room creation and instruct the user to audit the campaign first.
                     bool mirrorIsNew = false;
                     for (uint i = 0; i < newlyCreatedCampaignNames.Length; i++) {
@@ -293,7 +293,7 @@ namespace ConfigImporter {
                     }
 
                     // Add newly created activity to existing list so siblings can mirror it!
-                    // Explicitly set Name and Type from config — the API response structure may not
+                    // Explicitly set Name and Type from config - the API response structure may not
                     // map cleanly through the Activity constructor, causing FindCampaignIdByName to miss it.
                     Activity@ newAct = Activity(activityJson);
                     newAct.Id = actId;
@@ -408,7 +408,7 @@ namespace ConfigImporter {
         }
         ApplyPositionBatch(clubId, pendingPositionIds, tempPositions);
 
-        // Pass 2: set the real target positions — all slots are now free.
+        // Pass 2: set the real target positions - all slots are now free.
         ApplyPositionBatch(clubId, pendingPositionIds, pendingPositionValues);
 
         Log("Positions applied.");
@@ -461,7 +461,7 @@ namespace ConfigImporter {
         uint pruned = 0;
         for (uint i = 0; i < existing.Length; i++) {
             if (IsKept(existing[i].Id)) continue;
-            Log((dryRun ? "[Dry Run] " : "") + "Pruning " + existing[i].Type + " '" + existing[i].Name + "' (ID: " + existing[i].Id + ") — not in config");
+            Log((dryRun ? "[Dry Run] " : "") + "Pruning " + existing[i].Type + " '" + existing[i].Name + "' (ID: " + existing[i].Id + ") - not in config");
             currentDelta.ActivitiesDeleted++;
             if (!dryRun) {
                 API::DeleteActivity(clubId, existing[i].Id);
@@ -470,7 +470,7 @@ namespace ConfigImporter {
             }
             pruned++;
         }
-        if (pruned == 0) Log("Prune: nothing to remove — club matches config exactly.");
+        if (pruned == 0) Log("Prune: nothing to remove - club matches config exactly.");
     }
 
     Activity@ FindExisting(const string &in name, const string &in type, uint folderId, Activity@[]& existing) {

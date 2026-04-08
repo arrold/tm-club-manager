@@ -303,7 +303,7 @@ namespace MetadataOverrides {
                         string[] newTags;
                         newTags.InsertLast(surface); // New primary surface goes first
                         for (uint j = 0; j < map.Tags.Length; j++) {
-                            // Keep all other tags (including other surfaces — they are demoted, not removed)
+                            // Keep all other tags (including other surfaces - they are demoted, not removed)
                             if (map.Tags[j] != surface) {
                                 newTags.InsertLast(map.Tags[j]);
                             }

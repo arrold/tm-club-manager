@@ -3,8 +3,8 @@
 /*
  * Sequential TMX Fetching:
  * Uses TMX's &after=<TrackId> positional cursor to page through results.
- * The cursor is always taken from the last raw entry in each API response — not the
- * last filtered entry — so client-side filtering (denylist, difficulty override) never
+ * The cursor is always taken from the last raw entry in each API response - not the
+ * last filtered entry - so client-side filtering (denylist, difficulty override) never
  * causes the same page to be re-fetched.
  */
 TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset = true, bool useCache = true, int priorSmartIncludes = 0) {
@@ -46,7 +46,7 @@ TmxMap@[] FetchMapsSequential(TmxSearchFilters@ f, uint limit, bool applyOffset 
         Json::Value@ json = TMX::SearchMaps(f, batchSize, offset, lastId, useCache, "", authorId);
         if (json is null) break;
 
-        // Read the last raw TrackId before filtering — used as the positional cursor for the next page.
+        // Read the last raw TrackId before filtering - used as the positional cursor for the next page.
         // &after=X is a positional cursor in the sorted result set, not a MapId filter.
         // We must advance by the raw batch boundary, not the filtered one, so client-side
         // filtering (denylist, difficulty override) never causes the same page to be re-fetched.
@@ -420,7 +420,7 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
 }
 
 // Check whether a cached TmxMap passes the subscription's non-difficulty filters locally.
-// Difficulty is intentionally skipped — the caller has already resolved the effective difficulty.
+// Difficulty is intentionally skipped - the caller has already resolved the effective difficulty.
 bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
     if (map is null) return false;
 
@@ -461,7 +461,7 @@ bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
     if (f.TimeToMs > 0 && authorMs > f.TimeToMs) return false;
 
     // Upload date range.
-    // map.UploadedAt is ISO (yyyy-MM-dd...), filter dates are stored as dd/MM/yyyy —
+    // map.UploadedAt is ISO (yyyy-MM-dd...), filter dates are stored as dd/MM/yyyy -
     // convert filter dates via TMX::FormatDate before comparing.
     // If the filter has a date constraint and the cached map has no UploadedAt, reject conservatively.
     if (f.RelativeDays > 0) {
@@ -484,7 +484,7 @@ bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
 
     // TOTD status: only inject maps that match the TOTD filter.
     // IsTOTD defaults to false, so TOTD-only (InTOTD==1) subscriptions will reject
-    // any smart-include whose cached MapData doesn't confirm it as TOTD — which is the
+    // any smart-include whose cached MapData doesn't confirm it as TOTD - which is the
     // safe behaviour: if the map truly is TOTD with a difficulty override, re-sync its
     // metadata (via the Sync button) so IsTOTD gets stored.
     if (f.InTOTD == 1 && !map.IsTOTD) return false;
@@ -502,7 +502,7 @@ TmxMap@[] MergeAndSort(TmxMap@[]@ results, TmxMap@[]@ smartMaps, int sortPrimary
 
     if (sortPrimary < 0 || merged.Length < 2) return merged;
 
-    // Bubble sort — small lists only (typically ≤ 25 + a handful of overrides)
+    // Bubble sort - small lists only (typically ≤ 25 + a handful of overrides)
     for (uint i = 0; i < merged.Length - 1; i++) {
         for (uint j = 0; j < merged.Length - i - 1; j++) {
             bool swap = false;
@@ -530,13 +530,13 @@ TmxMap@[] MergeAndSort(TmxMap@[]@ results, TmxMap@[]@ smartMaps, int sortPrimary
 
 // Count override-cached maps that match filters (no page boundary check).
 // Used to adjust the TMX skip count for page N > 1 so bumped maps aren't lost.
-// Only relevant when a difficulty filter is active — without one, TMX already returns
+// Only relevant when a difficulty filter is active - without one, TMX already returns
 // the override maps naturally, so no skip adjustment is needed.
 int CountMatchingSmartIncludes(TmxSearchFilters@ f) {
     if (State::SelectedClub is null) return 0;
 
     // Smart-includes only compensate for maps that TMX's server-side difficulty filter has excluded.
-    // TMX only supports a single difficulty value — when 0 or 2+ difficulties are selected, no server
+    // TMX only supports a single difficulty value - when 0 or 2+ difficulties are selected, no server
     // filter is applied and TMX already returns those maps naturally. No skip adjustment is needed.
     uint selectedDiffCount = 0;
     for (uint j = 0; j < f.Difficulties.Length; j++) { if (f.Difficulties[j]) selectedDiffCount++; }
@@ -586,7 +586,7 @@ TmxMap@[] ApplySmartIncludes(TmxMap@[]@ results, TmxSearchFilters@ f, uint pageL
     for (uint i = 0; i < results.Length; i++) resultUids[results[i].Uid] = true;
 
     TmxMap@[] smartCandidates;
-    // For page 2+, skip override maps that sort better than the first result on this page —
+    // For page 2+, skip override maps that sort better than the first result on this page -
     // they would belong in an earlier page's campaign.
     bool checkPageBoundary = (f.CurrentPage > 1 && results.Length > 0);
 

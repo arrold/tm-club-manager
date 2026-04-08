@@ -129,6 +129,8 @@ class ClubsTab : Tab {
     bool showCreateCampaignModal = false;
     bool showCreateRoomModal = false;
     bool showImportModal = false;
+    bool isExportingMapData = false;
+    string exportMapDataStatus = "";
     string[] availableConfigs;
     string selectedConfig;
     uint[] renderedIds;
@@ -150,6 +152,22 @@ class ClubsTab : Tab {
         UI::SameLine();
         if (UI::Button(Icons::CloudUpload + " Export Config")) {
             ConfigExporter::Export();
+        }
+        UI::SameLine();
+        if (isExportingMapData) UI::BeginDisabled();
+        if (UI::Button(Icons::Database + " Export Map Data")) {
+            startnew(ExportMapData);
+        }
+        if (UI::IsItemHovered()) {
+            UI::BeginTooltip();
+            UI::Text("Exports map UIDs only (no metadata such as author names or tags).");
+            UI::TextDisabled("Further analysis (e.g. author aggregation) can be scripted against this file externally.");
+            UI::EndTooltip();
+        }
+        if (isExportingMapData) UI::EndDisabled();
+        if (exportMapDataStatus != "") {
+            UI::SameLine();
+            UI::TextDisabled(exportMapDataStatus);
         }
 
         UI::Separator();
@@ -666,7 +684,7 @@ class ClubsTab : Tab {
             f.Close();
             Json::Value@ parsed = IO::FileExists(tmpPath) ? Json::FromFile(tmpPath) : null;
             if (parsed is null || parsed.GetType() != Json::Type::Object) {
-                a.JsonEditError = "Invalid JSON — could not parse. Check syntax and try again.";
+                a.JsonEditError = "Invalid JSON: could not parse. Check syntax and try again.";
             } else {
                 @sub.Filters = TmxSearchFilters(parsed);
                 Subscriptions::Save();
@@ -702,7 +720,7 @@ class ClubsTab : Tab {
             UI::TextDisabled("RelativeDays: integer (0=off, >0=rolling upload window)");
             UI::TextDisabled("AuthorTimeRange: { \"Min\": <ms>, \"Max\": <ms> }");
             UI::TextDisabled("UploadDateRange: { \"From\": \"YYYY-MM-DD\", \"To\": \"YYYY-MM-DD\" }");
-            UI::TextDisabled("ForcedIncludes: JSON array of map UIDs — always included regardless of filters");
+            UI::TextDisabled("ForcedIncludes: JSON array of map UIDs, always included regardless of filters");
             UI::TreePop();
         }
         UI::Separator();
@@ -875,7 +893,7 @@ class ClubsTab : Tab {
                 UI::Text(ovr.HasKey("DifficultyName") ? string(ovr["DifficultyName"]) : "-");
                 UI::TableNextColumn();
                 UI::Text(ovr.HasKey("MapData") ? "\\$8f8" + Icons::Check : "\\$f44" + Icons::Times);
-                if (UI::IsItemHovered()) UI::SetTooltip(ovr.HasKey("MapData") ? "Map metadata cached — smart-include active" : "No metadata — set override again or Sync to enable smart-include");
+                if (UI::IsItemHovered()) UI::SetTooltip(ovr.HasKey("MapData") ? "Map metadata cached, smart-include active" : "No metadata - set override again or Sync to enable smart-include");
                 UI::TableNextColumn();
                 // Pin to campaign button
                 if (UI::Button(Icons::MapMarker + "##clpin_" + i)) UI::OpenPopup("PinPopup_" + uid);
@@ -934,6 +952,74 @@ void RunImportFlow() {
     
     tab.selectedConfig = "";
     tab.showImportModal = true;
+}
+
+void ExportMapData() {
+    ClubsTab@ tab = cast<ClubsTab>(CM_UI::GetTab("Clubs"));
+    if (tab is null || State::SelectedClub is null) return;
+    tab.isExportingMapData = true;
+    tab.exportMapDataStatus = Icons::Spinner + " Loading maps...";
+
+    uint clubId = State::SelectedClub.Id;
+    string clubName = State::SelectedClub.Name;
+
+    // Ensure maps are loaded for all campaigns
+    for (uint i = 0; i < State::ClubActivities.Length; i++) {
+        Activity@ a = State::ClubActivities[i];
+        if (a.Type != "campaign") continue;
+        if (!a.MapsLoaded && !a.LoadingMaps) {
+            a.LoadingMaps = true;
+            startnew(LoadActivityMaps, a);
+        }
+    }
+    // Wait for all campaign map loads to finish
+    bool allLoaded = false;
+    while (!allLoaded) {
+        allLoaded = true;
+        for (uint i = 0; i < State::ClubActivities.Length; i++) {
+            Activity@ a = State::ClubActivities[i];
+            if (a.Type != "campaign" || a.Failed) continue;
+            if (!a.MapsLoaded) { allLoaded = false; break; }
+        }
+        if (!allLoaded) yield();
+    }
+
+    // Build JSON
+    Json::Value@ root = Json::Object();
+    root["clubId"] = clubId;
+    root["clubName"] = clubName;
+
+    Time::Info t = Time::ParseUTC(Time::Stamp);
+    string mm = (t.Month < 10 ? "0" : "") + t.Month;
+    string dd = (t.Day   < 10 ? "0" : "") + t.Day;
+    root["exportedAt"] = t.Year + "-" + mm + "-" + dd;
+
+    Json::Value@ campaigns = Json::Array();
+    uint totalUids = 0;
+    for (uint i = 0; i < State::ClubActivities.Length; i++) {
+        Activity@ a = State::ClubActivities[i];
+        if (a.Type != "campaign" || a.Failed || !a.MapsLoaded) continue;
+        Json::Value@ entry = Json::Object();
+        entry["name"] = a.Name;
+        Json::Value@ uids = Json::Array();
+        for (uint j = 0; j < a.Maps.Length; j++) {
+            uids.Add(a.Maps[j].Uid);
+            totalUids++;
+        }
+        entry["uids"] = uids;
+        campaigns.Add(entry);
+    }
+    root["campaigns"] = campaigns;
+
+    string path = IO::FromStorageFolder("map_dump_" + clubId + ".json");
+    IO::File f;
+    f.Open(path, IO::FileMode::Write);
+    f.Write(Json::Write(root));
+    f.Close();
+
+    tab.exportMapDataStatus = Icons::Check + " Exported " + totalUids + " maps across " + campaigns.Length + " campaigns.";
+    tab.isExportingMapData = false;
+    trace("[ExportMapData] Written to: " + path);
 }
 
 void CommitImportFlow() {
