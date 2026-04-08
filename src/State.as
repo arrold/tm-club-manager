@@ -25,6 +25,7 @@ namespace State {
     TmxMap@[] tmxSearchResults;
     bool[] tmxSelected;
     TmxMap@[] tmxBrowseCache; // Full result set for client-side pagination (slow combo only)
+    bool tmxBrowseCacheExhausted = false; // True when the last TMX fetch returned fewer than its batch size
     Activity@ TargetActivity;
     bool searchInProgress = false;
     bool bulkAuditInProgress = false;
