@@ -272,6 +272,9 @@ class TmxMap {
             Author = json["Uploader"].HasKey("Name") ? Text::StripFormatCodes(string(json["Uploader"]["Name"])) : "Unknown Author";
         } else if (json.HasKey("UploaderName")) {
             Author = Text::StripFormatCodes(string(json["UploaderName"]));
+        } else if (json.HasKey("Username")) {
+            // get_map_info endpoint returns uploader as "Username" (plain string)
+            Author = Text::StripFormatCodes(string(json["Username"]));
         } else if (json.HasKey("Author")) {
             Author = string(json["Author"]);
         } else {
@@ -926,10 +929,9 @@ namespace TMX {
     };
 
     const string[] SORT_NAMES = {
-        "Awards Most", "Awards Least", "Uploaded Oldest",
-        "Downloads Most (N/A)", "Downloads Least (N/A)",
-        "Uploaded Newest", "Difficulty Easiest",
-        "Difficulty Hardest", "Name A-Z", "Name Z-A"
+        "Awards Most", "Awards Least",
+        "Difficulty Easiest", "Difficulty Hardest",
+        "Name A-Z", "Name Z-A"
     };
 
     const string[] COLLECTION_NAMES = { "Track of the Day", "ManiaClub", "World Tour", "Classic", "Map Pack" };

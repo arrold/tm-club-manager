@@ -104,15 +104,16 @@ void RunEagerMetadataFetch(ref@ r) {
 }
 
 void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
-    Json::Value@ resp = API::GetClubActivities(clubId, active, 100, 0);
-    if (resp !is null && resp.HasKey("activityList")) {
+    const uint PAGE_SIZE = 100;
+    uint offset = 0;
+    while (true) {
+        Json::Value@ resp = API::GetClubActivities(clubId, active, PAGE_SIZE, offset);
+        if (resp is null || !resp.HasKey("activityList")) break;
         Json::Value@ list = resp["activityList"];
         for (uint i = 0; i < list.Length; i++) {
-            if (list[i].GetType() != Json::Type::Object) {
-                continue;
-            }
+            if (list[i].GetType() != Json::Type::Object) continue;
             Activity@ a = Activity(list[i]);
-            
+
             // Re-use existing activity handle if it has unsaved changes
             Activity@ toAdd = a;
             for (uint j = 0; j < State::ClubActivities.Length; j++) {
@@ -126,6 +127,9 @@ void FetchActivitiesForStatus(uint clubId, bool active, Activity@[]& items) {
             for (uint j = 0; j < items.Length; j++) if (items[j].Id == toAdd.Id) { duplicate = true; break; }
             if (!duplicate) items.InsertLast(toAdd);
         }
+        if (list.Length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+        yield();
     }
 }
 
@@ -779,7 +783,7 @@ void DoBulkAudit() {
     if (State::bulkAuditUpdatesAvailable == 0) {
         State::bulkAuditStatus = "Audit Complete: All subscriptions are up to date.";
     } else if (State::bulkAuditUpdatesAvailable == 1) {
-        // Single activity changed — name it and describe the change inline
+        // Single activity changed - name it and describe the change inline
         for (uint i = 0; i < items.Length; i++) {
             if (items[i].AuditDone && (items[i].AuditAdded.Length > 0 || items[i].AuditRemoved.Length > 0 || items[i].AuditOrderMismatch)) {
                 string changeDesc = "";

@@ -50,7 +50,7 @@ class GlobalOverridesTab : Tab {
                 }
                 UI::TableNextColumn();
                 UI::Text(ovr.HasKey("MapData") ? "\\$8f8" + Icons::Check : "\\$f44" + Icons::Times);
-                if (UI::IsItemHovered()) UI::SetTooltip(ovr.HasKey("MapData") ? "Map metadata cached — smart-include active" : "No metadata — set override again or Sync to enable smart-include");
+                if (UI::IsItemHovered()) UI::SetTooltip(ovr.HasKey("MapData") ? "Map metadata cached, smart-include active" : "No metadata - set override again or Sync to enable smart-include");
                 UI::TableNextColumn();
                 if (UI::Button(Icons::Refresh + "##res" + i)) {
                     MetadataOverrides::Reset(uid);
