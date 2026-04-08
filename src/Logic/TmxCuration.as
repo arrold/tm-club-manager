@@ -650,6 +650,7 @@ void StartFreshTmxSearch() {
     // Clears the browse cache so DoTmxSearch rebuilds rather than serving stale results.
     // Called by the Search button; Prev/Next call DoTmxSearch directly to preserve the cache.
     State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+    State::tmxBrowseCacheExhausted = false;
     DoTmxSearch();
 }
 
@@ -663,15 +664,49 @@ void DoTmxSearch() {
     if (isSlowCombo) {
         uint startIdx = uint(requestedPage - 1) * pageSize;
 
-        // Serve from cache if it covers this page (includes page 1 on Prev navigation).
+        const uint BROWSE_BATCH = 100;
+
+        // Page is beyond the cache end - if exhausted, bounce back rather than resetting.
+        if (State::tmxBrowseCache.Length > 0 && startIdx >= State::tmxBrowseCache.Length && State::tmxBrowseCacheExhausted) {
+            State::tmxFilters.CurrentPage = requestedPage - 1;
+            NotifyError("No more results.");
+            return;
+        }
+
+        // Serve from cache if it already covers this page.
         if (State::tmxBrowseCache.Length > startIdx) {
             TmxMap@[] page;
             for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
                 page.InsertLast(State::tmxBrowseCache[i]);
             }
+
+            // Page came back short and TMX may have more - extend the cache.
+            if (page.Length < pageSize && !State::tmxBrowseCacheExhausted) {
+                State::searchInProgress = true;
+                uint lastId = State::tmxBrowseCache[State::tmxBrowseCache.Length - 1].TrackId;
+                TmxSearchFilters@ fBase = f.Clone();
+                fBase.CurrentPage = 1;
+                Json::Value@ more = TMX::SearchMaps(fBase, BROWSE_BATCH, 0, lastId, true);
+                if (more !is null) {
+                    int fetchedCount = 0;
+                    TmxMap@[] extra = FilterTmxResults(more, fBase, BROWSE_BATCH, fetchedCount);
+                    for (uint i = 0; i < extra.Length; i++) State::tmxBrowseCache.InsertLast(extra[i]);
+                    if (fetchedCount < int(BROWSE_BATCH)) State::tmxBrowseCacheExhausted = true;
+                    // Rebuild page from extended cache
+                    page.RemoveRange(0, page.Length);
+                    for (uint i = startIdx; i < State::tmxBrowseCache.Length && i < startIdx + pageSize; i++) {
+                        page.InsertLast(State::tmxBrowseCache[i]);
+                    }
+                } else {
+                    // Timeout or error - mark exhausted so we don't retry
+                    State::tmxBrowseCacheExhausted = true;
+                }
+                State::searchInProgress = false;
+            }
+
             if (page.Length == 0) {
                 State::tmxFilters.CurrentPage = requestedPage - 1;
-                NotifyError("No more results in cache (100 maps fetched total).");
+                NotifyError("No more results.");
             } else {
                 page = ApplySmartIncludes(page, f, pageSize);
             }
@@ -682,17 +717,19 @@ void DoTmxSearch() {
             return;
         }
 
-        // Page 1 (or cache exhausted): fetch 100 maps in one uncursored call.
+        // Cache miss (page 1, or fresh search): fetch first batch.
         State::searchInProgress = true;
         State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
+        State::tmxBrowseCacheExhausted = false;
 
         TmxSearchFilters@ fBase = f.Clone();
         fBase.CurrentPage = 1;
-        Json::Value@ json = TMX::SearchMaps(fBase, 100, 0, 0, false);
+        Json::Value@ json = TMX::SearchMaps(fBase, BROWSE_BATCH, 0, 0, false);
         if (json !is null) {
             int dummy = 0;
-            TmxMap@[] allMaps = FilterTmxResults(json, fBase, 100, dummy);
+            TmxMap@[] allMaps = FilterTmxResults(json, fBase, BROWSE_BATCH, dummy);
             for (uint i = 0; i < allMaps.Length; i++) State::tmxBrowseCache.InsertLast(allMaps[i]);
+            if (dummy < int(BROWSE_BATCH)) State::tmxBrowseCacheExhausted = true;
         }
 
         TmxMap@[] page;
