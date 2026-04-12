@@ -490,6 +490,21 @@ bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
     if (f.InTOTD == 1 && !map.IsTOTD) return false;
     if (f.InTOTD == 0 && map.IsTOTD) return false;
 
+    // Custom tags (local client-side filter - checks metadata_overrides per UID)
+    if (f.IncludeCustomTags.Length > 0 || f.ExcludeCustomTags.Length > 0) {
+        string[] mapCustomTags = MetadataOverrides::GetCustomTags(map.Uid);
+        if (f.IncludeCustomTags.Length > 0) {
+            bool hasInclude = false;
+            for (uint i = 0; i < f.IncludeCustomTags.Length; i++) {
+                if (mapCustomTags.Find(f.IncludeCustomTags[i]) >= 0) { hasInclude = true; break; }
+            }
+            if (!hasInclude) return false;
+        }
+        for (uint i = 0; i < f.ExcludeCustomTags.Length; i++) {
+            if (mapCustomTags.Find(f.ExcludeCustomTags[i]) >= 0) return false;
+        }
+    }
+
     return true;
 }
 
@@ -651,6 +666,7 @@ void StartFreshTmxSearch() {
     // Called by the Search button; Prev/Next call DoTmxSearch directly to preserve the cache.
     State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
     State::tmxBrowseCacheExhausted = false;
+    State::tmxBrowseCacheExtensionFailed = false;
     DoTmxSearch();
 }
 
@@ -666,10 +682,15 @@ void DoTmxSearch() {
 
         const uint BROWSE_BATCH = 100;
 
-        // Page is beyond the cache end - if exhausted, bounce back rather than resetting.
-        if (State::tmxBrowseCache.Length > 0 && startIdx >= State::tmxBrowseCache.Length && State::tmxBrowseCacheExhausted) {
+        // Page is beyond the cache end - if exhausted or extension failed, bounce back rather than resetting.
+        if (State::tmxBrowseCache.Length > 0 && startIdx >= State::tmxBrowseCache.Length
+                && (State::tmxBrowseCacheExhausted || State::tmxBrowseCacheExtensionFailed)) {
             State::tmxFilters.CurrentPage = requestedPage - 1;
-            NotifyError("No more results.");
+            if (State::tmxBrowseCacheExtensionFailed) {
+                NotifyError("TMX timed out extending results - hit Search to retry.");
+            } else {
+                NotifyError("No more results.");
+            }
             return;
         }
 
@@ -681,7 +702,7 @@ void DoTmxSearch() {
             }
 
             // Page came back short and TMX may have more - extend the cache.
-            if (page.Length < pageSize && !State::tmxBrowseCacheExhausted) {
+            if (page.Length < pageSize && !State::tmxBrowseCacheExhausted && !State::tmxBrowseCacheExtensionFailed) {
                 State::searchInProgress = true;
                 uint lastId = State::tmxBrowseCache[State::tmxBrowseCache.Length - 1].TrackId;
                 TmxSearchFilters@ fBase = f.Clone();
@@ -698,8 +719,9 @@ void DoTmxSearch() {
                         page.InsertLast(State::tmxBrowseCache[i]);
                     }
                 } else {
-                    // Timeout or error - mark exhausted so we don't retry
-                    State::tmxBrowseCacheExhausted = true;
+                    // Timeout or network error - mark as transient failure, not exhausted.
+                    // The user can hit Search to retry; navigating to a deeper page will bounce back.
+                    State::tmxBrowseCacheExtensionFailed = true;
                 }
                 State::searchInProgress = false;
             }
@@ -721,6 +743,7 @@ void DoTmxSearch() {
         State::searchInProgress = true;
         State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
         State::tmxBrowseCacheExhausted = false;
+        State::tmxBrowseCacheExtensionFailed = false;
 
         TmxSearchFilters@ fBase = f.Clone();
         fBase.CurrentPage = 1;

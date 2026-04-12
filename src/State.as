@@ -25,7 +25,8 @@ namespace State {
     TmxMap@[] tmxSearchResults;
     bool[] tmxSelected;
     TmxMap@[] tmxBrowseCache; // Full result set for client-side pagination (slow combo only)
-    bool tmxBrowseCacheExhausted = false; // True when the last TMX fetch returned fewer than its batch size
+    bool tmxBrowseCacheExhausted = false;      // True when TMX confirmed no more results (short page returned)
+    bool tmxBrowseCacheExtensionFailed = false; // True when the extension request timed out (transient - retry by hitting Search)
     Activity@ TargetActivity;
     bool searchInProgress = false;
     bool bulkAuditInProgress = false;
@@ -39,6 +40,7 @@ namespace State {
     LocalMap@[] LocalMaps;
     bool refreshingLocalMaps = false;
     uint localMapsCount = 0;
+    string localMapTargetListId = "";
 
     // Pending TOTD sync (staged here to avoid passing strings via ref@ in startnew)
     string pendingTotdSyncUid = "";

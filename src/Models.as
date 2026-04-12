@@ -426,6 +426,8 @@ class TmxSearchFilters {
     int Vehicle = -1; 
     string[] IncludeTags = {};
     string[] ExcludeTags = {};
+    string[] IncludeCustomTags = {};
+    string[] ExcludeCustomTags = {};
     
     // Multi-select difficulty
     bool[] Difficulties = { false, false, false, false, false, false };

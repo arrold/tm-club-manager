@@ -265,6 +265,53 @@ class CurationTab : Tab {
             UI::Columns(1);
             UI::PopStyleColor(3);
         }
+
+        // Custom tags section (shown only when at least one custom tag exists)
+        string[] customTagList = CustomTags::GetAll();
+        if (customTagList.Length > 0) {
+            int customActive = f.IncludeCustomTags.Length + f.ExcludeCustomTags.Length;
+            string customLabel = "Custom Tags" + (customActive > 0 ? " (" + customActive + ")" : "") + "  -  (Click: Include > Exclude > None)###CustomTagsHeader";
+
+            UI::PushStyleVar(UI::StyleVar::FramePadding, vec2(10, 2));
+            UI::PushStyleColor(UI::Col::Header, vec4(0.2f, 0.2f, 0.2f, 0.2f));
+            bool customOpen = UI::CollapsingHeader(customLabel);
+            UI::PopStyleColor();
+            UI::PopStyleVar();
+
+            if (customOpen) {
+                UI::PushStyleColor(UI::Col::Header, vec4(0, 0, 0, 0));
+                UI::PushStyleColor(UI::Col::HeaderHovered, vec4(0, 0, 0, 0));
+                UI::PushStyleColor(UI::Col::HeaderActive, vec4(0, 0, 0, 0));
+
+                UI::Columns(6, "CustomTagGrid", false);
+                for (uint i = 0; i < customTagList.Length; i++) {
+                    string tag = customTagList[i];
+                    int state = 0;
+                    if (TMX::ArrayContains(f.IncludeCustomTags, tag)) state = 1;
+                    else if (TMX::ArrayContains(f.ExcludeCustomTags, tag)) state = 2;
+
+                    if (state == 1) UI::PushStyleColor(UI::Col::Text, vec4(0.2f, 0.9f, 0.2f, 1));
+                    else if (state == 2) UI::PushStyleColor(UI::Col::Text, vec4(0.9f, 0.2f, 0.2f, 1));
+                    else UI::PushStyleColor(UI::Col::Text, vec4(0.6f, 0.6f, 0.6f, 1));
+
+                    if (UI::Selectable(tag, false, UI::SelectableFlags::None)) {
+                        if (state == 0) {
+                            f.IncludeCustomTags.InsertLast(tag);
+                        } else if (state == 1) {
+                            TMX::ArrayRemove(f.IncludeCustomTags, tag);
+                            f.ExcludeCustomTags.InsertLast(tag);
+                        } else {
+                            TMX::ArrayRemove(f.ExcludeCustomTags, tag);
+                        }
+                    }
+
+                    UI::PopStyleColor();
+                    UI::NextColumn();
+                }
+                UI::Columns(1);
+                UI::PopStyleColor(3);
+            }
+        }
     }
 
     int DrawCombo(const string &in label, int current, const string[]@ options) {
