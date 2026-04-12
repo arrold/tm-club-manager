@@ -159,10 +159,67 @@ namespace MetadataOverrides {
         }
         data[uid]["ExtraTags"] = updated;
         // Clean up the override entry entirely if nothing remains
-        if (updated.Length == 0 && !data[uid].HasKey("Name") && !data[uid].HasKey("Difficulty") && !data[uid].HasKey("Tags")) {
+        if (updated.Length == 0 && !HasAnyOverride(uid)) {
             data.Remove(uid);
         }
         Save();
+    }
+
+    // Returns true if the entry has any override data other than ExtraTags/CustomTags array fields.
+    bool HasAnyOverride(const string &in uid) {
+        if (!data.HasKey(uid)) return false;
+        Json::Value@ e = data[uid];
+        return e.HasKey("Name") || e.HasKey("Difficulty") || e.HasKey("Tags")
+            || (e.HasKey("CustomTags") && e["CustomTags"].GetType() == Json::Type::Array && e["CustomTags"].Length > 0);
+    }
+
+    string[] GetCustomTags(const string &in uid) {
+        Load();
+        string[] result;
+        if (!data.HasKey(uid) || !data[uid].HasKey("CustomTags")) return result;
+        Json::Value@ arr = data[uid]["CustomTags"];
+        if (arr.GetType() != Json::Type::Array) return result;
+        for (uint i = 0; i < arr.Length; i++) result.InsertLast(string(arr[i]));
+        return result;
+    }
+
+    void AddCustomTag(const string &in uid, const string &in tag) {
+        Load();
+        if (!data.HasKey(uid)) data[uid] = Json::Object();
+        Json::Value@ existing = data[uid].HasKey("CustomTags") ? data[uid]["CustomTags"] : Json::Array();
+        for (uint i = 0; i < existing.Length; i++) {
+            if (string(existing[i]) == tag) return; // already present
+        }
+        existing.Add(tag);
+        data[uid]["CustomTags"] = existing;
+        Save();
+    }
+
+    void RemoveCustomTag(const string &in uid, const string &in tag) {
+        Load();
+        if (!data.HasKey(uid) || !data[uid].HasKey("CustomTags")) return;
+        Json::Value@ updated = Json::Array();
+        Json::Value@ existing = data[uid]["CustomTags"];
+        for (uint i = 0; i < existing.Length; i++) {
+            if (string(existing[i]) != tag) updated.Add(string(existing[i]));
+        }
+        data[uid]["CustomTags"] = updated;
+        // If nothing else remains, clean up the entry
+        if (updated.Length == 0 && !data[uid].HasKey("Name") && !data[uid].HasKey("Difficulty")
+                && !data[uid].HasKey("Tags")
+                && (!data[uid].HasKey("ExtraTags") || data[uid]["ExtraTags"].Length == 0)) {
+            data.Remove(uid);
+        }
+        Save();
+    }
+
+    // Called by CustomTags::Delete to strip a deleted tag definition from all maps.
+    void RemoveCustomTagFromAll(const string &in tag) {
+        Load();
+        string[] uids = data.GetKeys();
+        for (uint i = 0; i < uids.Length; i++) {
+            RemoveCustomTag(uids[i], tag);
+        }
     }
 
     void SetTags(const string &in uid, string[]@ tags) {
@@ -342,6 +399,36 @@ namespace MetadataOverrides {
                         }
                     }
                     UI::EndMenu();
+                }
+            }
+
+            // Custom tag submenus
+            string[] allCustomTags = CustomTags::GetAll();
+            if (allCustomTags.Length > 0) {
+                string[] mapCustomTags = GetCustomTags(map.Uid);
+                // Add Custom Tag - show tags not yet applied to this map
+                if (UI::BeginMenu(Icons::Tag + " Add Custom Tag")) {
+                    bool anyAvailable = false;
+                    for (uint t = 0; t < allCustomTags.Length; t++) {
+                        if (mapCustomTags.Find(allCustomTags[t]) >= 0) continue; // already applied
+                        anyAvailable = true;
+                        if (UI::MenuItem(allCustomTags[t])) {
+                            AddCustomTag(map.Uid, allCustomTags[t]);
+                        }
+                    }
+                    if (!anyAvailable) UI::TextDisabled("All custom tags already applied");
+                    UI::EndMenu();
+                }
+                // Remove Custom Tag - show only tags currently applied
+                if (mapCustomTags.Length > 0) {
+                    if (UI::BeginMenu(Icons::Tag + " Remove Custom Tag")) {
+                        for (uint t = 0; t < mapCustomTags.Length; t++) {
+                            if (UI::MenuItem(mapCustomTags[t])) {
+                                RemoveCustomTag(map.Uid, mapCustomTags[t]);
+                            }
+                        }
+                        UI::EndMenu();
+                    }
                 }
             }
 

@@ -1,6 +1,8 @@
 // Tabs/GlobalOverridesTab.as - Centralized management for 'The Void' overrides
 
 class GlobalOverridesTab : Tab {
+    string newCustomTagName = "";
+
     GlobalOverridesTab() {
         super("Overrides", Icons::Shield);
     }
@@ -62,6 +64,46 @@ class GlobalOverridesTab : Tab {
 
         if (MetadataOverrides::data.GetKeys().Length == 0) {
             UI::TextDisabled("No active overrides found.");
+        }
+
+        UI::Separator();
+        UI::Text("\\$f80" + Icons::Tag + "\\$z Custom Tags");
+        UI::TextDisabled("User-defined tags applied locally to maps. Use them as include/exclude filters in the TMX search.");
+
+        // Create new tag
+        UI::PushItemWidth(220);
+        newCustomTagName = UI::InputText("##newCustomTag", newCustomTagName);
+        UI::PopItemWidth();
+        UI::SameLine();
+        if (UI::Button(Icons::Plus + " Create Tag")) {
+            string trimmed = newCustomTagName.Trim();
+            if (trimmed != "" && !CustomTags::Exists(trimmed)) {
+                CustomTags::Create(trimmed);
+                newCustomTagName = "";
+            }
+        }
+        if (UI::IsItemHovered()) UI::SetTooltip("Create a new custom tag with this name");
+
+        string[] customTagList = CustomTags::GetAll();
+        if (customTagList.Length == 0) {
+            UI::TextDisabled("No custom tags defined yet.");
+        } else {
+            if (UI::BeginTable("CustomTagsTable", 2, UI::TableFlags::RowBg)) {
+                UI::TableSetupColumn("Tag Name", UI::TableColumnFlags::WidthStretch);
+                UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 80);
+                UI::TableHeadersRow();
+                for (uint i = 0; i < customTagList.Length; i++) {
+                    UI::TableNextRow();
+                    UI::TableNextColumn();
+                    UI::Text(customTagList[i]);
+                    UI::TableNextColumn();
+                    if (UI::Button(Icons::Trash + "##delct" + i)) {
+                        CustomTags::Delete(customTagList[i]);
+                    }
+                    if (UI::IsItemHovered()) UI::SetTooltip("Delete tag '" + customTagList[i] + "' and remove it from all maps");
+                }
+                UI::EndTable();
+            }
         }
     }
 }

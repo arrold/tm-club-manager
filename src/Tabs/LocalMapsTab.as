@@ -25,6 +25,7 @@ class LocalMapsTab : Tab {
         UI::BeginGroup();
         UI::Text("Target Activity:");
         UI::SameLine();
+        UI::PushItemWidth(180);
         if (UI::BeginCombo("##target_act_local", State::TargetActivity is null ? "None" : State::TargetActivity.Name)) {
             if (UI::Selectable(State::PersonalTracksProxy.Name, State::TargetActivity !is null && State::TargetActivity.Id == State::PersonalTracksProxy.Id)) {
                 @State::TargetActivity = State::PersonalTracksProxy;
@@ -38,6 +39,27 @@ class LocalMapsTab : Tab {
             }
             UI::EndCombo();
         }
+        UI::PopItemWidth();
+        UI::SameLine();
+        UI::Text("|");
+        UI::SameLine();
+        UI::Text("Target List:");
+        UI::SameLine();
+        UI::PushItemWidth(180);
+        string listLabel = State::localMapTargetListId == "" ? "None" : State::localMapTargetListId;
+        if (UI::BeginCombo("##target_list_local", listLabel)) {
+            if (UI::Selectable("None", State::localMapTargetListId == "")) {
+                State::localMapTargetListId = "";
+            }
+            for (uint i = 0; i < State::CustomListNames.Length; i++) {
+                string lname = State::CustomListNames[i];
+                if (UI::Selectable(lname, State::localMapTargetListId == lname)) {
+                    State::localMapTargetListId = lname;
+                }
+            }
+            UI::EndCombo();
+        }
+        UI::PopItemWidth();
         UI::EndGroup();
 
         UI::Separator();
@@ -53,6 +75,12 @@ class LocalMapsTab : Tab {
         UI::BeginDisabled(State::TargetActivity is null);
         if (UI::Button(Icons::Plus + " Add Selected to " + (State::TargetActivity !is null ? State::TargetActivity.Name : "Activity"))) {
             startnew(DoAddSelectedLocalMaps);
+        }
+        UI::EndDisabled();
+        UI::SameLine();
+        UI::BeginDisabled(State::localMapTargetListId == "");
+        if (UI::Button(Icons::ListUl + " Add Selected to List")) {
+            startnew(DoAddSelectedLocalMapsToList);
         }
         UI::EndDisabled();
 
@@ -124,7 +152,7 @@ class LocalMapsTab : Tab {
                     UI::TableSetupColumn("S", UI::TableColumnFlags::WidthFixed, 25);
                     UI::TableSetupColumn("Map Name");
                     UI::TableSetupColumn("Filename");
-                    UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 60);
+                    UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 90);
 
                     for (uint i = 0; i < node.Maps.Length; i++) {
                         RenderMapRow(node.Maps[i], i);
@@ -142,7 +170,7 @@ class LocalMapsTab : Tab {
         UI::TableNextColumn();
         m.Selected = UI::Checkbox("##sel_" + m.Uid, m.Selected);
 
-        UI::TableNextColumn(); 
+        UI::TableNextColumn();
         if (m.IsUploaded) {
             UI::Text(Icons::CloudUpload);
             if (UI::IsItemHovered()) UI::SetTooltip("Uploaded to Nadeo");
@@ -155,9 +183,17 @@ class LocalMapsTab : Tab {
         UI::TableNextColumn(); UI::TextDisabled(m.Filename);
         UI::TableNextColumn();
         UI::BeginDisabled(State::TargetActivity is null);
-        if (UI::Button("Add##" + m.Uid)) {
+        if (UI::Button("Add##act" + m.Uid)) {
             startnew(DoAddLocalMap, m);
         }
+        if (UI::IsItemHovered()) UI::SetTooltip("Add to target activity");
+        UI::EndDisabled();
+        UI::SameLine();
+        UI::BeginDisabled(State::localMapTargetListId == "");
+        if (UI::Button(Icons::ListUl + "##lst" + m.Uid)) {
+            startnew(DoAddLocalMapToList, m);
+        }
+        if (UI::IsItemHovered()) UI::SetTooltip("Add to target list");
         UI::EndDisabled();
     }
 
@@ -167,7 +203,7 @@ class LocalMapsTab : Tab {
             UI::TableSetupColumn("S", UI::TableColumnFlags::WidthFixed, 25);
             UI::TableSetupColumn("Map Name");
             UI::TableSetupColumn("Filename");
-            UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 60);
+            UI::TableSetupColumn("Actions", UI::TableColumnFlags::WidthFixed, 90);
             
             UI::TableHeadersRow();
 

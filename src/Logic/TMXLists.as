@@ -30,9 +30,10 @@ namespace CustomLists {
 
     void Add(const string &in listName, TmxMap@ map) {
         TmxMap@[]@ maps = GetMaps(listName);
-        // Prevent duplicates
+        // Dedup by UID (works for both TMX maps and local-only stubs where TrackId == 0)
         for (uint i = 0; i < maps.Length; i++) {
-            if (maps[i].TrackId == map.TrackId) return;
+            if (maps[i].Uid != "" && maps[i].Uid == map.Uid) return;
+            if (maps[i].Uid == "" && maps[i].TrackId != 0 && maps[i].TrackId == map.TrackId) return;
         }
         maps.InsertLast(map);
         Save(listName, maps);
@@ -42,10 +43,10 @@ namespace CustomLists {
         Notify("Added '" + map.Name + "' to local list '" + listName + "'");
     }
 
-    void Remove(const string &in listName, int trackId) {
+    void Remove(const string &in listName, const string &in uid) {
         TmxMap@[]@ maps = GetMaps(listName);
         for (uint i = 0; i < maps.Length; i++) {
-            if (maps[i].TrackId == trackId) {
+            if (maps[i].Uid == uid) {
                 maps.RemoveAt(i);
                 Save(listName, maps);
                 return;

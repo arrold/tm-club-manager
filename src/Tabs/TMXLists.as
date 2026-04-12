@@ -127,7 +127,7 @@ class TMXListsTab : Tab {
                 UI::Text(string::Join(m.Tags, ", "));
                 UI::TableNextColumn();
                 if (UI::Button(Icons::Trash + "##rem" + i)) {
-                    CustomLists::Remove(State::SelectedListId, m.TrackId);
+                    CustomLists::Remove(State::SelectedListId, m.Uid);
                     State::CustomListMaps = CustomLists::GetMaps(State::SelectedListId);
                 }
             }

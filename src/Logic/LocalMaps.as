@@ -201,6 +201,38 @@ void DoAddLocalMap(ref@ r) {
     }
 }
 
+// Creates a minimal TmxMap stub from a LocalMap for storing in custom lists.
+// Maps that haven't been uploaded to TMX get TrackId=0 and Author="Local".
+TmxMap@ LocalMapToStub(LocalMap@ m) {
+    TmxMap@ stub = TmxMap();
+    stub.Uid = m.Uid;
+    stub.Name = m.Name;
+    stub.TrackId = 0;
+    stub.Author = "Local";
+    return stub;
+}
+
+void DoAddLocalMapToList(ref@ r) {
+    LocalMap@ m = cast<LocalMap>(r);
+    if (m is null || State::localMapTargetListId == "") return;
+    CustomLists::Add(State::localMapTargetListId, LocalMapToStub(m));
+}
+
+void DoAddSelectedLocalMapsToList() {
+    if (State::localMapTargetListId == "") return;
+    uint count = 0;
+    for (uint i = 0; i < State::LocalMaps.Length; i++) {
+        LocalMap@ m = State::LocalMaps[i];
+        if (m is null || !m.Selected) continue;
+        CustomLists::Add(State::localMapTargetListId, LocalMapToStub(m));
+        m.Selected = false;
+        count++;
+    }
+    if (count > 0) {
+        UI::ShowNotification("Club Manager", "Added " + count + " maps to list '" + State::localMapTargetListId + "'", vec4(0, 1, 0, 1));
+    }
+}
+
 void DoAddSelectedLocalMaps() {
     if (State::SelectedClub is null || State::TargetActivity is null) return;
     

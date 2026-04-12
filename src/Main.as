@@ -15,6 +15,7 @@ void Main() {
     CustomLists::Load();
     MetadataOverrides::Load();
     ClubOverrides::Load();
+    CustomTags::Load();
     AuditCache::Init();
     startnew(MetadataOverrides::SyncAllNames);
     
