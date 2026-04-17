@@ -667,6 +667,8 @@ void StartFreshTmxSearch() {
     State::tmxBrowseCache.RemoveRange(0, State::tmxBrowseCache.Length);
     State::tmxBrowseCacheExhausted = false;
     State::tmxBrowseCacheExtensionFailed = false;
+    State::cumulativeSmartCount = 0;
+    State::lastSmartCountPage = 0;
     DoTmxSearch();
 }
 
@@ -772,7 +774,19 @@ void DoTmxSearch() {
     // Normal path.
     State::searchInProgress = true;
 
-    int priorSmart = (f.CurrentPage > 1) ? CountMatchingSmartIncludes(f) : 0;
+    // Use the accumulated actual smart-include count when navigating forward sequentially.
+    // CountMatchingSmartIncludes overcounts when override maps get trimmed off the bottom of
+    // an earlier page (they match the filter but never appear), shifting page N back by too
+    // many positions and causing the last map on page N-1 to repeat as the first on page N.
+    int priorSmart = 0;
+    if (f.CurrentPage > 1) {
+        if (State::lastSmartCountPage == f.CurrentPage - 1) {
+            priorSmart = State::cumulativeSmartCount;
+        } else {
+            priorSmart = CountMatchingSmartIncludes(f);
+        }
+    }
+
     TmxMap@[] results = FetchMapsSequential(f, pageSize, true, false, priorSmart);
 
     if (results.Length == 0 && requestedPage > 1) {
@@ -782,7 +796,24 @@ void DoTmxSearch() {
         return;
     }
 
+    // Track pre-merge UIDs so we can count which maps in the final result are smart includes.
+    dictionary preMergeUids;
+    for (uint i = 0; i < results.Length; i++) preMergeUids[results[i].Uid] = true;
+
     results = ApplySmartIncludes(results, f, pageSize);
+
+    // Count smart includes that actually survived the merge+trim on this page.
+    int smartShownThisPage = 0;
+    for (uint i = 0; i < results.Length; i++) {
+        if (!preMergeUids.Exists(results[i].Uid)) smartShownThisPage++;
+    }
+    // Accumulate for next page if we're moving forward sequentially.
+    if (f.CurrentPage == State::lastSmartCountPage + 1) {
+        State::cumulativeSmartCount += smartShownThisPage;
+    } else {
+        State::cumulativeSmartCount = smartShownThisPage;
+    }
+    State::lastSmartCountPage = f.CurrentPage;
 
     State::tmxSearchResults.RemoveRange(0, State::tmxSearchResults.Length);
     for (uint i = 0; i < results.Length; i++) State::tmxSearchResults.InsertLast(results[i]);

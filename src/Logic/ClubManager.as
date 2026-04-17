@@ -520,10 +520,27 @@ void DoAuditSubscription(ref@ r) {
         }
         results = filtered;
     } else { // TMX Search
-        // Denylist is handled inside FetchMapsSequential -> FilterTmxResults
-        // For page 2+, shift the TMX skip count back by the number of smart-includes that
-        // were injected into earlier pages, so bumped maps aren't lost in the gap.
-        int priorSmart = (sub.Filters.CurrentPage > 1) ? CountMatchingSmartIncludes(sub.Filters) : 0;
+        // For page 2+, compute the exact cumulative smart-include count by simulating each
+        // earlier page - the same logic the live search uses via accumulated state.
+        // CountMatchingSmartIncludes overcounts when override maps are trimmed off the bottom
+        // of an earlier page, causing the audit to produce the same duplicated result as the
+        // bugged campaign (making it appear up-to-date when it isn't).
+        // useCache=true keeps this fast when TMX responses are still cached.
+        int priorSmart = 0;
+        if (sub.Filters.CurrentPage > 1) {
+            TmxSearchFilters@ fSim = sub.Filters.Clone();
+            for (int pg = 1; pg < sub.Filters.CurrentPage; pg++) {
+                fSim.CurrentPage = pg;
+                TmxMap@[] simResults = FetchMapsSequential(fSim, sub.MapLimit, true, true, priorSmart);
+                dictionary simPre;
+                for (uint i = 0; i < simResults.Length; i++) simPre[simResults[i].Uid] = true;
+                simResults = ApplySmartIncludes(simResults, fSim, sub.MapLimit);
+                for (uint i = 0; i < simResults.Length; i++) {
+                    if (!simPre.Exists(simResults[i].Uid)) priorSmart++;
+                }
+                yield();
+            }
+        }
         results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true, priorSmart);
     }
 
