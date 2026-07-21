@@ -452,6 +452,7 @@ class TmxSearchFilters {
     string PrimaryTag = "";
     string PrimarySurface = "";
     uint ResultLimit = 25;
+    uint MinAwards = 0; // 0 = disabled; >0 = drop maps with fewer than this many TMX awards
     uint DisplayCostLimit = 10000;
     uint ItemSizeLimit = 1000000;
     int RelativeDays = 0; // 0 = disabled; >0 = uploadedafter = today minus N days (rolling window)
@@ -589,6 +590,8 @@ class TmxSearchFilters {
 
         ResultLimit = JsonGetUint(json, "MapLimit", 25);
         if (ResultLimit == 25) ResultLimit = JsonGetUint(json, "ResultLimit", 25);
+
+        MinAwards = JsonGetUint(json, "MinAwards", 0);
         
         if (json.HasKey("RoomGuardrails")) {
             DisplayCostLimit = JsonGetUint(json["RoomGuardrails"], "DisplayCost", 10000);
@@ -615,6 +618,7 @@ class TmxSearchFilters {
         if (MapName != "") json["MapName"] = MapName;
         if (AuthorNames.Length > 0) json["Authors"] = string::Join(AuthorNames, ", ");
         if (ResultLimit != 25) json["MapLimit"] = int(ResultLimit);
+        if (MinAwards > 0) json["MinAwards"] = int(MinAwards);
         if (CurrentPage > 1) json["CurrentPage"] = CurrentPage;
 
         Json::Value@ diffs = Json::Array();
@@ -704,6 +708,7 @@ class TmxSearchFilters {
         other.PrimarySurfaceOnly = PrimarySurfaceOnly;
         other.LimitFilter = LimitFilter;
         other.ResultLimit = ResultLimit;
+        other.MinAwards = MinAwards;
         other.DisplayCostLimit = DisplayCostLimit;
         other.ItemSizeLimit = ItemSizeLimit;
         other.CurrentPage = CurrentPage;
@@ -768,6 +773,7 @@ class TmxSearchFilters {
         if (PrimarySurfaceOnly != def.PrimarySurfaceOnly) json["PrimarySurfaceOnly"] = PrimarySurfaceOnly;
         if (LimitFilter != def.LimitFilter) json["LimitFilter"] = LimitFilter;
         if (ResultLimit != def.ResultLimit) json["ResultLimit"] = ResultLimit;
+        if (MinAwards != def.MinAwards) json["MinAwards"] = MinAwards;
         if (CurrentPage > 1) json["CurrentPage"] = CurrentPage;
         if (DisplayCostLimit != def.DisplayCostLimit) json["DisplayCostLimit"] = DisplayCostLimit;
         if (ItemSizeLimit != def.ItemSizeLimit) json["ItemSizeLimit"] = ItemSizeLimit;
@@ -815,6 +821,7 @@ class TmxSearchFilters {
         }
         if (InTOTD != other.InTOTD) diff += "InTOTD: " + InTOTD + " != " + other.InTOTD + ", ";
         if (InCollection != other.InCollection) diff += "InCollection: " + InCollection + " != " + other.InCollection + ", ";
+        if (MinAwards != other.MinAwards) diff += "MinAwards: " + MinAwards + " != " + other.MinAwards + ", ";
         if (CurrentPage != other.CurrentPage) diff += "CurrentPage: " + CurrentPage + " != " + other.CurrentPage + ", ";
         
         if (IncludeTags.Length != other.IncludeTags.Length) {

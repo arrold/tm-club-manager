@@ -42,6 +42,12 @@ namespace State {
     uint localMapsCount = 0;
     string localMapTargetListId = "";
 
+    // Smart-include pagination state (normal path only)
+    // Tracks the actual number of override maps shown so far, so page N+1 knows exactly
+    // how many TMX positions to skip back to avoid duplicates or gaps.
+    int cumulativeSmartCount = 0;
+    int lastSmartCountPage = 0;
+
     // Pending TOTD sync (staged here to avoid passing strings via ref@ in startnew)
     string pendingTotdSyncUid = "";
     uint pendingTotdSyncClubId = 0;

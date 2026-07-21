@@ -520,15 +520,57 @@ void DoAuditSubscription(ref@ r) {
         }
         results = filtered;
     } else { // TMX Search
-        // Denylist is handled inside FetchMapsSequential -> FilterTmxResults
-        // For page 2+, shift the TMX skip count back by the number of smart-includes that
-        // were injected into earlier pages, so bumped maps aren't lost in the gap.
-        int priorSmart = (sub.Filters.CurrentPage > 1) ? CountMatchingSmartIncludes(sub.Filters) : 0;
+        // For page 2+, compute the exact cumulative smart-include count by simulating each
+        // earlier page - the same logic the live search uses via accumulated state.
+        // CountMatchingSmartIncludes overcounts when override maps are trimmed off the bottom
+        // of an earlier page, causing the audit to produce the same duplicated result as the
+        // bugged campaign (making it appear up-to-date when it isn't).
+        // useCache=true keeps this fast when TMX responses are still cached.
+        //
+        // If TMX fails on any simulation page (timeout/error returns empty results),
+        // ApplySmartIncludes would see results.Length == 0, disable its page-boundary filter,
+        // and gather every matching override - inflating priorSmart and pointing the actual
+        // fetch at the wrong TMX positions. Fall back to CountMatchingSmartIncludes - purely
+        // client-side, deterministic, and at worst overcounts slightly. Better than no audit.
+        int priorSmart = 0;
+        bool simulationFailed = false;
+        if (sub.Filters.CurrentPage > 1) {
+            TmxSearchFilters@ fSim = sub.Filters.Clone();
+            for (int pg = 1; pg < sub.Filters.CurrentPage; pg++) {
+                fSim.CurrentPage = pg;
+                TmxMap@[] simResults = FetchMapsSequential(fSim, sub.MapLimit, true, true, priorSmart);
+                if (simResults.Length == 0) {
+                    simulationFailed = true;
+                    break;
+                }
+                dictionary simPre;
+                for (uint i = 0; i < simResults.Length; i++) simPre[simResults[i].Uid] = true;
+                simResults = ApplySmartIncludes(simResults, fSim, sub.MapLimit);
+                for (uint i = 0; i < simResults.Length; i++) {
+                    if (!simPre.Exists(simResults[i].Uid)) priorSmart++;
+                }
+                yield();
+            }
+        }
+        if (simulationFailed) {
+            priorSmart = CountMatchingSmartIncludes(sub.Filters);
+            Notify("Audit for " + a.Name + ": simulation hit a TMX hiccup, using estimate fallback (results may have slight boundary overlap).");
+        }
         results = FetchMapsSequential(sub.Filters, sub.MapLimit, true, true, priorSmart);
     }
 
     if (results.Length == 0 && sub.ForcedIncludes.Length == 0) {
         Notify("Audit failed: No maps found in source (" + (sub.SourceType == 1 ? "Local List: " + sub.ListId : "TMX Search") + ").");
+        a.IsAuditing = false;
+        return;
+    }
+
+    // If the actual fetch came back short on a non-page-1 subscription, TMX likely timed out
+    // on the second batch (the &after= cursor URL). Trusting the partial result would generate
+    // false "remove" suggestions for maps that are still valid - they're just past our cutoff.
+    // Skip this audit cleanly so the campaign keeps its current maps until TMX is healthy.
+    if (sub.SourceType == 0 && sub.Filters.CurrentPage > 1 && results.Length < sub.MapLimit) {
+        Notify("Audit skipped for " + a.Name + ": TMX returned " + results.Length + "/" + sub.MapLimit + " maps (likely a transient TMX issue on this query). Retry later.");
         a.IsAuditing = false;
         return;
     }
