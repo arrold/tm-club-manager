@@ -55,6 +55,14 @@ class CurationTab : Tab {
         if (f.ResultLimit < 1) f.ResultLimit = 1;
         if (f.ResultLimit > 100) f.ResultLimit = 100;
         UI::PopItemWidth();
+
+        UI::SameLine();
+        UI::PushItemWidth(100);
+        int minAw = UI::InputInt("Min Awards", int(f.MinAwards));
+        if (minAw < 0) minAw = 0;
+        f.MinAwards = uint(minAw);
+        UI::PopItemWidth();
+        if (UI::IsItemHovered()) UI::SetTooltip("Drop maps with fewer than this many TMX awards (0 = off). Saved into the campaign subscription.");
         UI::PopItemWidth();
 
         UI::Separator();

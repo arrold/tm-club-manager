@@ -17,3 +17,6 @@ desktop.ini
 # Common artifacts
 *.tmp
 *.log
+
+# Map data export dumps (produced by Clubs tab "Export Map Data")
+map_dump_*.json

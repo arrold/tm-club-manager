@@ -160,8 +160,8 @@ class ClubsTab : Tab {
         }
         if (UI::IsItemHovered()) {
             UI::BeginTooltip();
-            UI::Text("Exports map UIDs only (no metadata such as author names or tags).");
-            UI::TextDisabled("Further analysis (e.g. author aggregation) can be scripted against this file externally.");
+            UI::Text("Exports maps per campaign with UID, name and author (name + account ID).");
+            UI::TextDisabled("Group by authorId across campaigns for mapper aggregation; exclude existing mapper campaigns to avoid skew.");
             UI::EndTooltip();
         }
         if (isExportingMapData) UI::EndDisabled();
@@ -1001,12 +1001,18 @@ void ExportMapData() {
         if (a.Type != "campaign" || a.Failed || !a.MapsLoaded) continue;
         Json::Value@ entry = Json::Object();
         entry["name"] = a.Name;
-        Json::Value@ uids = Json::Array();
+        Json::Value@ maps = Json::Array();
         for (uint j = 0; j < a.Maps.Length; j++) {
-            uids.Add(a.Maps[j].Uid);
+            MapInfo@ m = a.Maps[j];
+            Json::Value@ mj = Json::Object();
+            mj["uid"] = m.Uid;
+            mj["name"] = m.Name;
+            mj["author"] = m.Author;
+            mj["authorId"] = m.AuthorWebServicesId;
+            maps.Add(mj);
             totalUids++;
         }
-        entry["uids"] = uids;
+        entry["maps"] = maps;
         campaigns.Add(entry);
     }
     root["campaigns"] = campaigns;

@@ -338,6 +338,9 @@ TmxMap@[] FilterTmxResults(Json::Value@ json, TmxSearchFilters@ f, uint requeste
             if (!authorMatch) continue;
         }
 
+        // Minimum award floor
+        if (f.MinAwards > 0 && m.AwardCount < f.MinAwards) continue;
+
         // Apply secondary logic filters
         if (f.MapName != "" && !m.Name.ToLower().Contains(f.MapName.ToLower())) continue;
 
@@ -426,6 +429,9 @@ bool MatchesFiltersLocally(TmxMap@ map, TmxSearchFilters@ f) {
 
     // Map name substring match
     if (f.MapName != "" && map.Name.ToLower().Contains(f.MapName.ToLower()) == false) return false;
+
+    // Minimum award floor
+    if (f.MinAwards > 0 && map.AwardCount < f.MinAwards) return false;
 
     // Author filter
     if (f.AuthorNames.Length > 0) {
